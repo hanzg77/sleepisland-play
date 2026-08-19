@@ -10,7 +10,7 @@
 
 | 目录 | 名称 | 说明 |
 | --- | --- | --- |
-| [`games/kinetic-maze`](games/kinetic-maze) | 夜间机关 · Kinetic Maze | 9×16 几何机关乐器，从 1 个机关生长到 128 个声部，全 Web Audio 空间音频。 |
+| [`games/kinetic-maze`](games/kinetic-maze) | 夜间机关 · Kinetic Maze | 9×16 几何机关乐器：划过屏幕点亮一批机关，机关彼此唤醒、依次亮起熄灭；亮数在可配区间内大幅波动，全 Web Audio 空间音频。 |
 
 ## 约定
 

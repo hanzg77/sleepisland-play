@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
-  <title>几何机关 v4.1 · 128 声部生长</title>
+  <title>夜间机关 · Kinetic Maze</title>
   <style>
     :root {
       color-scheme: dark;
@@ -62,35 +62,26 @@
 
     canvas.is-interactive { cursor: crosshair; }
 
-    .chrome {
-      position: absolute;
-      right: clamp(10px, 2vw, 20px);
-      bottom: clamp(10px, 2vw, 20px);
-      left: clamp(10px, 2vw, 20px);
-      display: grid;
-      gap: 7px;
-      pointer-events: none;
-    }
-
-    .meta,
-    .control {
-      border: 1px solid var(--line);
-      background: var(--panel);
-      box-shadow: 0 8px 26px rgba(0, 0, 0, 0.38);
-      backdrop-filter: blur(18px);
-    }
-
     .meta {
+      position: absolute;
+      top: clamp(10px, 2vw, 20px);
+      right: clamp(10px, 2vw, 20px);
+      left: clamp(10px, 2vw, 20px);
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 10px;
       align-items: center;
       min-height: 34px;
       padding: 9px 12px;
+      border: 1px solid var(--line);
       border-radius: 999px;
+      background: var(--panel);
+      box-shadow: 0 8px 26px rgba(0, 0, 0, 0.38);
+      backdrop-filter: blur(18px);
       color: var(--muted);
       font-size: clamp(8px, 1.8vw, 12px);
       letter-spacing: 0.05em;
+      pointer-events: none;
     }
 
     .meta__seed {
@@ -100,25 +91,60 @@
       white-space: nowrap;
     }
 
-    .controls {
+    .chrome {
+      position: absolute;
+      right: clamp(14px, 3vw, 28px);
+      bottom: clamp(18px, 4vw, 40px);
+      left: clamp(14px, 3vw, 28px);
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 6px;
-      pointer-events: auto;
+      gap: 12px;
+      justify-items: center;
+      pointer-events: none;
     }
 
-    .control {
-      min-height: 40px;
-      padding: 8px;
+    .chrome__hint {
+      color: var(--muted);
+      font-size: clamp(10px, 2.2vw, 14px);
+      letter-spacing: 0.08em;
+      text-align: center;
+      text-shadow: 0 1px 10px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9);
+    }
+
+    .start {
+      min-width: min(62%, 320px);
+      min-height: 54px;
+      padding: 14px 32px;
+      border: 1px solid rgba(216, 229, 233, 0.22);
       border-radius: 999px;
       appearance: none;
-      color: var(--ink);
+      color: #061015;
+      background: var(--ink);
+      box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45), 0 0 0 6px rgba(216, 229, 233, 0.06);
       cursor: pointer;
-      font: 700 clamp(8px, 1.8vw, 11px) / 1 ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+      font: 700 clamp(14px, 3vw, 18px) / 1 ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+      letter-spacing: 0.18em;
+      pointer-events: auto;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
 
-    .control[aria-pressed="true"] { color: #061015; background: var(--ink); }
-    .control:active { transform: translateY(1px); }
+    .start:hover { box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 0 10px rgba(216, 229, 233, 0.08); }
+    .start:active { transform: translateY(1px) scale(0.99); }
+
+    .hint {
+      position: absolute;
+      right: 0;
+      bottom: clamp(18px, 4vw, 40px);
+      left: 0;
+      color: var(--muted);
+      font-size: clamp(10px, 2.2vw, 14px);
+      letter-spacing: 0.08em;
+      text-align: center;
+      text-shadow: 0 1px 10px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9);
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+
+    [hidden] { display: none !important; }
 
     @media (max-aspect-ratio: 9 / 16) {
       main { padding: 0; }
@@ -130,19 +156,17 @@
   <main>
     <section class="stage" aria-label="1080 × 1920 几何机关 v4">
       <canvas id="kinetic-maze-v4" width="1080" height="1920" aria-label="亮起才演奏的几何机关"></canvas>
-      <div class="chrome">
-        <div class="meta" aria-live="polite">
-          <span class="meta__seed" id="seed-label">Seed —</span>
-          <span id="status-label">正在建立 V4</span>
-        </div>
-        <div class="controls">
-          <button class="control" id="play-control" type="button" aria-pressed="true">Ⅱ 暂停</button>
-          <button class="control" id="sound-control" type="button" aria-pressed="false">♪ 点一下开声</button>
-          <button class="control" id="mode-control" type="button" aria-pressed="false" title="自动生长或点击试听">◎ 自动生长</button>
-        </div>
+      <div class="meta" id="meta-bar" aria-live="polite" hidden>
+        <span class="meta__seed" id="seed-label">Seed —</span>
+        <span id="status-label">已就绪</span>
       </div>
+      <div class="chrome" id="chrome">
+        <p class="chrome__hint">手指或鼠标划过画面，机关会亮起并彼此唤醒</p>
+        <button class="start" id="start-control" type="button">▶ 开始</button>
+      </div>
+      <p class="hint" id="hint-label" hidden>划过画面，点亮一批机关</p>
     </section>
   </main>
-  <script src="./kinetic-maze-v4.js?v=41-t4"></script>
+  <script src="./kinetic-maze-v4.js?v=43-ripple-t1"></script>
 </body>
 </html>

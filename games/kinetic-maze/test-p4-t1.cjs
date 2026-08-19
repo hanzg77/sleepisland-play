@@ -53,14 +53,15 @@ const elements = new Map([
   ["#kinetic-maze-v4", canvas],
   ["#seed-label", new MockElement()],
   ["#status-label", new MockElement()],
-  ["#play-control", new MockElement()],
-  ["#sound-control", new MockElement()],
-  ["#mode-control", new MockElement()],
+  ["#start-control", new MockElement()],
+  ["#chrome", new MockElement()],
+  ["#hint-label", new MockElement()],
+  ["#meta-bar", new MockElement()],
 ]);
 
 global.HTMLCanvasElement = MockCanvas;
 global.document = { querySelector(selector) { return elements.get(selector) || null; } };
-global.window = { location: { search: "?seed=v4-growth-preview" }, AudioContext: MockAudioContext };
+global.window = { location: { search: "?seed=v4-growth-preview&mode=growth" }, AudioContext: MockAudioContext };
 let scheduledFrame = null;
 global.requestAnimationFrame = (callback) => { scheduledFrame = callback; return 1; };
 global.cancelAnimationFrame = () => {};
@@ -68,7 +69,7 @@ global.cancelAnimationFrame = () => {};
 require(path.join(__dirname, "kinetic-maze-v4.js"));
 const debug = global.window.__KINETIC_V4_DEBUG__;
 assert.ok(debug);
-assert.equal(debug.version, "4.2-p4.2-t1");
+assert.equal(debug.version, "4.3-ripple-t1");
 
 const components = debug.getComponents();
 assert.equal(components.length, 144);
@@ -231,5 +232,61 @@ assert.deepEqual(interaction30.startedOrder, interaction60.startedOrder, "FIFO s
 assert.deepEqual(interaction30.completed, interaction60.completed, "immutable completion boundaries must match across frame rates");
 assert.deepEqual(interaction30.eventCounts, interaction60.eventCounts, "complete click sound sets must match across frame rates");
 
+// Ripple mode: self-sustaining, stage-free population that starts from one ember and follows a wandering target.
+assert.deepEqual(debug.getLitRange(), { min: 8, max: 80 });
+for (const rippleSeed of ["v4-growth-preview", "ripple-a", "ripple-b"]) {
+  const ripple = debug.auditRipple(rippleSeed, 240);
+  assert.equal(ripple.deterministicAcrossFrameRates, true, `${rippleSeed} ripple events/activations must match at 30fps and 60fps`);
+  assert.equal(ripple.startsWithOne, true, `${rippleSeed} must start from a single ember`);
+  assert.equal(ripple.neverEmpty, true, `${rippleSeed} must never go fully dark once started`);
+  assert.ok(ripple.litAt10 <= 8, `${rippleSeed} must grow slowly at first (lit at 10s = ${ripple.litAt10})`);
+  assert.ok(ripple.litAt120 >= ripple.range.min, `${rippleSeed} must reach the lit band (lit at 120s = ${ripple.litAt120})`);
+  assert.ok(ripple.maxLit <= ripple.range.max, `${rippleSeed} idle ripple must stay within the lit band (max ${ripple.maxLit})`);
+  assert.equal(ripple.allCycleCountsBounded, true);
+  assert.equal(ripple.allSpawnsAdjacent, true, `${rippleSeed} spread must only reach cells near a lit component`);
+  assert.ok(ripple.spawnCount > 30, `${rippleSeed} must propagate through sparks`);
+  assert.equal(ripple.sweepSeededAll, true, `${rippleSeed} sweeping cells must light every swept dark cell at once`);
+  assert.equal(ripple.sweepBoosted, true, `${rippleSeed} a sweep must lift the population target`);
+}
+const rippleFluctuation = debug.previewRipple("v4-growth-preview", 420, 1 / 30);
+const bandSamples = rippleFluctuation.litCurve.filter((sample) => sample.at >= 120).map((sample) => sample.lit);
+assert.ok(Math.max(...bandSamples) - Math.min(...bandSamples) >= 16, `lit population must fluctuate widely (range ${Math.min(...bandSamples)}–${Math.max(...bandSamples)})`);
+
+// Ripple tunables: defaults ← host config object ← URL parameters, with range normalization.
+const defaults = debug.getRippleDefaults();
+assert.deepEqual(debug.getRippleConfig(), debug.resolveRippleConfig("", null), "runtime config must equal resolved defaults when nothing overrides");
+assert.equal(defaults.litMin, 8);
+assert.equal(defaults.litMax, 80);
+const hostResolved = debug.resolveRippleConfig("", { litMin: 6, litMax: 60, rampSeconds: 45, wanderPeriods: [30, 50, 70], sparkCap: "0.4" });
+assert.equal(hostResolved.litMin, 6);
+assert.equal(hostResolved.litMax, 60);
+assert.equal(hostResolved.rampSeconds, 45);
+assert.deepEqual(hostResolved.wanderPeriods, [30, 50, 70]);
+assert.equal(hostResolved.sparkCap, 0.4);
+const urlResolved = debug.resolveRippleConfig("?lit=12-40&ramp=30&rampCurve=1&boost=2&boostDecay=8&sparkCap=0.8&cycles=2-4&wander=20,40,80&hint=3", { litMin: 6, litMax: 60 });
+assert.equal(urlResolved.litMin, 12, "URL must override host config");
+assert.equal(urlResolved.litMax, 40);
+assert.equal(urlResolved.rampSeconds, 30);
+assert.equal(urlResolved.rampCurve, 1);
+assert.equal(urlResolved.boostPerSeed, 2);
+assert.equal(urlResolved.boostDecay, 8);
+assert.equal(urlResolved.sparkCap, 0.8);
+assert.equal(urlResolved.cyclesMin, 2);
+assert.equal(urlResolved.cyclesMax, 4);
+assert.deepEqual(urlResolved.wanderPeriods, [20, 40, 80]);
+assert.equal(urlResolved.hintSeconds, 3);
+const clamped = debug.resolveRippleConfig("?lit=200-3&sparkCap=9&cycles=5-1");
+assert.equal(clamped.litMin, 143, "litMin clamps to grid size - 1");
+assert.equal(clamped.litMax, 144, "litMax stays above litMin");
+assert.equal(clamped.sparkCap, 1);
+assert.equal(clamped.cyclesMin, 5);
+assert.equal(clamped.cyclesMax, 5, "cyclesMax is raised to cyclesMin when inverted");
+assert.deepEqual(debug.resolveRippleConfig("?lit=abc&wander=1,2"), debug.resolveRippleConfig(""), "malformed URL values are ignored");
+const fastRipple = debug.previewRipple("v4-growth-preview", 60, 1 / 30, { config: { rampSeconds: 20, litMin: 20, litMax: 40 } });
+const slowRipple = debug.previewRipple("v4-growth-preview", 60, 1 / 30);
+assert.ok(fastRipple.stats.target > slowRipple.stats.target, "a shorter ramp must lift the target sooner");
+assert.ok(fastRipple.finalLit > slowRipple.finalLit, "config overrides must change the simulated population");
+assert.ok(fastRipple.maxLit <= 40);
+
 assert.equal(typeof scheduledFrame, "function");
-console.log("P4.2 PASS: preview behavior plus deterministic 180s growth, complete-cycle retirement, and final silence are verified");
+console.log("P4.3 PASS: ripple mode plus preview behavior, deterministic 180s growth, complete-cycle retirement, and final silence are verified");

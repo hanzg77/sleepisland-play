@@ -40,10 +40,10 @@
   const canvas = document.querySelector("#kinetic-maze-v4");
   const seedLabel = document.querySelector("#seed-label");
   const statusLabel = document.querySelector("#status-label");
-  const playControl = document.querySelector("#play-control");
-  const soundControl = document.querySelector("#sound-control");
-  const modeControl = document.querySelector("#mode-control");
-  if (!(canvas instanceof HTMLCanvasElement) || !seedLabel || !statusLabel || !playControl || !soundControl || !modeControl) {
+  const startControl = document.querySelector("#start-control");
+  const chrome = document.querySelector("#chrome");
+  const hintLabel = document.querySelector("#hint-label");
+  if (!(canvas instanceof HTMLCanvasElement) || !seedLabel || !statusLabel) {
     throw new Error("V4 page elements are missing.");
   }
   const draw = canvas.getContext("2d", { alpha: false });
@@ -100,7 +100,102 @@
   }
 
   function queryMode() {
-    return new URLSearchParams(window.location.search).get("mode") === "interactive" ? "interactive" : "growth";
+    const mode = new URLSearchParams(window.location.search).get("mode");
+    return mode === "interactive" || mode === "growth" ? mode : "ripple";
+  }
+
+  /**
+   * ripple 模式全部可调参数的默认值。覆盖优先级：URL 参数 > window.KINETIC_MAZE_CONFIG.ripple > 默认值。
+   * URL 键名见 RIPPLE_URL_KEYS；宿主（网站 / WebView）可在加载脚本前注入
+   *   window.KINETIC_MAZE_CONFIG = { ripple: { litMin: 6, litMax: 60, rampSeconds: 45 } };
+   */
+  const RIPPLE_DEFAULTS = Object.freeze({
+    litMin: 8,               // 目标亮数漂移带下限（1..143）
+    litMax: 80,              // 目标亮数漂移带上限（litMin+1..144）
+    rampSeconds: 60,         // 慢启动时间常数（秒）：目标沿对数尺度从 1 爬向漂移带
+    rampCurve: 1.2,          // 慢启动曲线指数（>1 起步更缓）
+    wanderPeriods: [61, 97, 149], // 漂移带三条慢正弦的周期（秒）
+    wanderWeights: [0.5, 0.32, 0.18], // 三条正弦的权重
+    wanderDepth: 1.15,       // 漂移幅度放大（越大越常触到区间两端）
+    boostPerSeed: 1.1,       // 每个划动种子给目标的临时抬升
+    boostDecay: 14,          // 抬升的衰减时间常数（秒）
+    sparkAccent: 0.7,        // 事件 accent ≥ 此值才算一次火花机会
+    sparkCap: 0.55,          // 单次火花点亮邻居的概率上限
+    sparkGain: 0.35,         // 概率 = 赤字 / max(sparkFloor, 目标 × sparkGain)
+    sparkFloor: 3,           // 上式的分母下限
+    cyclesMin: 1,            // 传播点亮的整数周期数下限（钟摆自动 ≥ 2）
+    cyclesMax: 3,            // 传播点亮的整数周期数上限
+    neighborOrthogonal: 1,   // 8 邻域中正交邻居权重
+    neighborDiagonal: 0.55,  // 8 邻域中对角邻居权重
+    ring2Orthogonal: 0.5,    // 无空邻居时，距离 2 圈正交格权重
+    ring2Diagonal: 0.3,      // 距离 2 圈其余格权重
+    emberDelay: 0.5,         // 接力失败后补 ember 的延迟（秒）
+    trailSeconds: 0.9,       // 划动光迹渐隐时间（秒）
+    seedMarkSeconds: 0.7,    // 种子扩散环时长（秒）
+    hintSeconds: 6,          // 开始后提示文字停留时间（秒）
+    sweepStep: 0.35,         // 轨迹采样步长（相对最小格边）
+  });
+
+  const RIPPLE_URL_KEYS = Object.freeze({
+    lit: ["litMin", "litMax"], ramp: "rampSeconds", rampCurve: "rampCurve", wander: "wanderPeriods", wanderWeights: "wanderWeights", wanderDepth: "wanderDepth",
+    boost: "boostPerSeed", boostDecay: "boostDecay", sparkAccent: "sparkAccent", sparkCap: "sparkCap", sparkGain: "sparkGain", sparkFloor: "sparkFloor",
+    cycles: ["cyclesMin", "cyclesMax"], neighborOrthogonal: "neighborOrthogonal", neighborDiagonal: "neighborDiagonal", ring2Orthogonal: "ring2Orthogonal", ring2Diagonal: "ring2Diagonal",
+    emberDelay: "emberDelay", trail: "trailSeconds", seedMark: "seedMarkSeconds", hint: "hintSeconds", sweepStep: "sweepStep",
+  });
+
+  function parseNumberList(raw, length) {
+    const values = String(raw).split(/[-~,\s]+/).filter(Boolean).map(Number);
+    return values.length === length && values.every(Number.isFinite) ? values : null;
+  }
+
+  function normalizeRippleConfig(config) {
+    const result = { ...config };
+    const cells = ROWS * COLS;
+    result.litMin = clamp(Math.round(result.litMin), 1, cells - 1);
+    result.litMax = clamp(Math.round(result.litMax), result.litMin + 1, cells);
+    result.rampSeconds = Math.max(0.001, result.rampSeconds);
+    result.rampCurve = Math.max(0.1, result.rampCurve);
+    result.wanderPeriods = result.wanderPeriods.map((period) => Math.max(1, period));
+    result.boostDecay = Math.max(0.001, result.boostDecay);
+    result.sparkCap = clamp(result.sparkCap, 0, 1);
+    result.sparkFloor = Math.max(1e-6, result.sparkFloor);
+    result.cyclesMin = clamp(Math.round(result.cyclesMin), 1, 8);
+    result.cyclesMax = clamp(Math.round(result.cyclesMax), result.cyclesMin, 8);
+    result.emberDelay = Math.max(0, result.emberDelay);
+    result.sweepStep = clamp(result.sweepStep, 0.05, 1);
+    return Object.freeze(result);
+  }
+
+  /** 合并 默认值 ← 宿主配置对象 ← URL 参数，返回冻结后的 ripple 配置。 */
+  function resolveRippleConfig(search = "", hostConfig = null) {
+    const merged = { ...RIPPLE_DEFAULTS };
+    if (hostConfig && typeof hostConfig === "object") {
+      for (const key of Object.keys(RIPPLE_DEFAULTS)) {
+        const value = hostConfig[key];
+        if (value === undefined || value === null) continue;
+        if (Array.isArray(RIPPLE_DEFAULTS[key])) {
+          const list = Array.isArray(value) ? value.map(Number) : parseNumberList(value, RIPPLE_DEFAULTS[key].length);
+          if (list && list.length === RIPPLE_DEFAULTS[key].length && list.every(Number.isFinite)) merged[key] = list;
+        } else if (Number.isFinite(Number(value))) {
+          merged[key] = Number(value);
+        }
+      }
+    }
+    const parameters = new URLSearchParams(search);
+    for (const [urlKey, target] of Object.entries(RIPPLE_URL_KEYS)) {
+      const raw = parameters.get(urlKey);
+      if (raw === null || raw.trim() === "") continue;
+      if (Array.isArray(target)) {
+        const list = parseNumberList(raw, target.length);
+        if (list) target.forEach((key, index) => { merged[key] = list[index]; });
+      } else if (Array.isArray(RIPPLE_DEFAULTS[target])) {
+        const list = parseNumberList(raw, RIPPLE_DEFAULTS[target].length);
+        if (list) merged[target] = list;
+      } else if (Number.isFinite(Number(raw))) {
+        merged[target] = Number(raw);
+      }
+    }
+    return normalizeRippleConfig(merged);
   }
 
   function querySoundIntent() {
@@ -342,9 +437,9 @@
     return 0;
   }
 
-  function cycleCountFor(component, activationOrdinal, targetCount, mode) {
-    let minimum = mode === "oneShot" ? 1 : targetCount >= 36 ? 2 : 1;
-    let maximum = mode === "oneShot" ? 4 : targetCount >= 64 ? 4 : 3;
+  function cycleCountFor(component, activationOrdinal, targetCount, mode, bounds = null) {
+    let minimum = bounds ? bounds.min : mode === "oneShot" ? 1 : targetCount >= 36 ? 2 : 1;
+    let maximum = bounds ? bounds.max : mode === "oneShot" ? 4 : targetCount >= 64 ? 4 : 3;
     if (component.type === "pendulum") minimum = Math.max(2, minimum);
     return minimum + hashString(`${component.id}:${activationOrdinal}:${targetCount}:${mode}:cycles`) % (maximum - minimum + 1);
   }
@@ -740,6 +835,220 @@
       const boundaryFinished = manager.update(boundary);
       conductor.advanceTo(boundary);
       conductor.handleFinished(boundaryFinished, boundary);
+      finished.push(...boundaryFinished);
+    }
+    events.push(...manager.eventsBetween(cursor, toTime));
+    return { events, finished };
+  }
+
+  function unitHash(...parts) {
+    return hashString(parts.join(":")) / 4294967296;
+  }
+
+  function neighborCandidates(component, components, active, ring, config = RIPPLE_DEFAULTS) {
+    const candidates = [];
+    for (let dRow = -ring; dRow <= ring; dRow += 1) {
+      for (let dCol = -ring; dCol <= ring; dCol += 1) {
+        if (Math.max(Math.abs(dRow), Math.abs(dCol)) !== ring) continue;
+        const row = component.cell.row + dRow;
+        const col = component.cell.col + dCol;
+        if (row < 0 || row >= ROWS || col < 0 || col >= COLS) continue;
+        const id = row * COLS + col;
+        if (active.has(id)) continue;
+        const orthogonal = dRow === 0 || dCol === 0;
+        candidates.push({ id, weight: ring === 1 ? (orthogonal ? config.neighborOrthogonal : config.neighborDiagonal) : orthogonal ? config.ring2Orthogonal : config.ring2Diagonal, component: components[id] });
+      }
+    }
+    return candidates;
+  }
+
+  /**
+   * RippleConductor：无阶段、无固定人口表的自维持导演。
+   * - 亮起人口跟随一个连续目标 target(t)：慢启动 ramp × 慢漂移 band(lo..hi) + 划动注入的 boost。
+   * - 传播是因果的：每个亮着的组件在自己的重音时刻（accent ≥ 0.7）产生一次 spark 机会，
+   *   按“目标 − 当前亮数”的赤字概率点亮一个暗邻居；亮数高于目标就不再蔓延，多余的自然走完整数周期后熄灭。
+   * - 一旦全暗（或刚开始），在确定的时刻补一颗 ember 种子，所以从 1 个开始慢慢长起，且不会彻底死掉。
+   * - 全部随机决定使用无状态 hash，与帧率、决策顺序无关。
+   */
+  class RippleConductor {
+    constructor(seed, components, manager, config = RIPPLE_DEFAULTS) {
+      this.seed = seed;
+      this.components = components;
+      this.manager = manager;
+      this.config = normalizeRippleConfig({ ...RIPPLE_DEFAULTS, ...config });
+      this.range = { min: this.config.litMin, max: this.config.litMax };
+      this.phases = this.config.wanderPeriods.map((_, index) => unitHash(seed, "ripple-phase", index) * TAU);
+      this.sparks = [];
+      this.impulses = [];
+      this.emberAt = 0;
+      this.emberCount = 0;
+      this.relayCount = 0;
+      this.sparkCount = 0;
+      this.spawnCount = 0;
+      this.seedCount = 0;
+      this.log = [];
+    }
+
+    band(now) {
+      const { wanderPeriods, wanderWeights, wanderDepth } = this.config;
+      const drift = wanderPeriods.reduce((sum, period, index) => sum + (wanderWeights[index] ?? 0) * Math.sin(TAU * now / period + (this.phases[index] ?? 0)), 0);
+      const amount = 0.5 + 0.5 * clamp(drift * wanderDepth, -1, 1);
+      return lerp(this.range.min, this.range.max, amount);
+    }
+
+    ramp(now) {
+      return 1 - Math.exp(-Math.pow(Math.max(0, now) / this.config.rampSeconds, this.config.rampCurve));
+    }
+
+    boost(now) {
+      let total = 0;
+      for (const impulse of this.impulses) {
+        if (impulse.at > now + 1e-9) continue;
+        total += impulse.amount * Math.exp(-(now - impulse.at) / this.config.boostDecay);
+      }
+      return total;
+    }
+
+    /** 几何插值：从 1 沿对数尺度慢慢爬向漂移带，早期只是一两盏灯在游走，之后平滑加速，没有阶段跳变。 */
+    target(now) {
+      const grown = Math.exp(Math.log(Math.max(1, this.band(now))) * this.ramp(now));
+      return Math.min(this.range.max, Math.max(1, grown) + this.boost(now));
+    }
+
+    scheduleSparks(activation) {
+      let index = 0;
+      for (const event of activation.events) {
+        if (event.accent < this.config.sparkAccent) continue;
+        this.sparks.push({ at: activation.startedAt + event.offset, componentId: activation.componentId, activationId: activation.id, index: index++ });
+      }
+      this.sparks.sort((left, right) => left.at - right.at || left.activationId - right.activationId || left.index - right.index);
+    }
+
+    light(componentId, at, source) {
+      if (this.manager.active.has(componentId)) return null;
+      const component = this.components[componentId];
+      const ordinal = this.manager.activationCounts.get(componentId) || 0;
+      const cycleCount = cycleCountFor(component, ordinal, 0, "ripple", { min: this.config.cyclesMin, max: this.config.cyclesMax });
+      const activation = this.manager.start(componentId, at, "ripple", 0, { cycleCount });
+      if (!activation) return null;
+      this.scheduleSparks(activation);
+      this.emberAt = null;
+      if (this.log.length < 4096) this.log.push({ at: Number(at.toFixed(6)), componentId, source, activationId: activation.id });
+      return activation;
+    }
+
+    /** 划动路径命中的一批初始种子：立即点亮，并把目标临时抬高，让这批种子有机会往外蔓延。 */
+    seedMany(componentIds, at) {
+      const started = [];
+      for (const componentId of componentIds) {
+        const activation = this.light(componentId, at, "seed");
+        if (activation) started.push(activation);
+      }
+      if (started.length) {
+        this.seedCount += started.length;
+        this.impulses.push({ at, amount: started.length * this.config.boostPerSeed });
+        if (this.impulses.length > 256) this.impulses.splice(0, this.impulses.length - 256);
+      }
+      return started;
+    }
+
+    nextBoundary(after) {
+      const nextSpark = this.sparks.find((spark) => spark.at > after + 1e-9)?.at ?? Infinity;
+      const nextCompletion = Math.min(Infinity, ...[...this.manager.active.values()].map((activation) => activation.completeAt));
+      const ember = this.emberAt !== null && this.emberAt > after + 1e-9 ? this.emberAt : Infinity;
+      return Math.min(nextSpark, nextCompletion, ember);
+    }
+
+    fireSparks(now) {
+      const due = [];
+      while (this.sparks.length && this.sparks[0].at <= now + 1e-9) due.push(this.sparks.shift());
+      for (const spark of due) {
+        if (this.manager.active.get(spark.componentId)?.id !== spark.activationId) continue;
+        this.sparkCount += 1;
+        const lit = this.manager.active.size;
+        const target = this.target(now);
+        const deficit = target - lit;
+        const probability = clamp(deficit / Math.max(this.config.sparkFloor, target * this.config.sparkGain), 0, this.config.sparkCap);
+        if (unitHash(this.seed, "spark", spark.activationId, spark.index) >= probability) continue;
+        const parent = this.components[spark.componentId];
+        let candidates = neighborCandidates(parent, this.components, this.manager.active, 1, this.config);
+        if (!candidates.length) candidates = neighborCandidates(parent, this.components, this.manager.active, 2, this.config);
+        if (!candidates.length) continue;
+        const total = candidates.reduce((sum, candidate) => sum + candidate.weight, 0);
+        let cursor = unitHash(this.seed, "pick", spark.activationId, spark.index) * total;
+        let chosen = candidates.at(-1);
+        for (const candidate of candidates) {
+          cursor -= candidate.weight;
+          if (cursor <= 0) { chosen = candidate; break; }
+        }
+        if (this.light(chosen.id, now, "spark")) this.spawnCount += 1;
+      }
+    }
+
+    /** 最后一盏灯走完周期时，把火种直接交给它的邻居：画面永远不会全暗，早期的独奏会在格子间缓慢游走。 */
+    handleFinished(finished, now) {
+      if (this.manager.active.size > 0 || !finished.length) return;
+      const last = finished.at(-1);
+      const parent = this.components[last.componentId];
+      let candidates = neighborCandidates(parent, this.components, this.manager.active, 1, this.config);
+      if (!candidates.length) candidates = neighborCandidates(parent, this.components, this.manager.active, 2, this.config);
+      const key = this.relayCount++;
+      let chosenId;
+      if (candidates.length) {
+        const total = candidates.reduce((sum, candidate) => sum + candidate.weight, 0);
+        let cursor = unitHash(this.seed, "relay", key) * total;
+        chosenId = candidates.at(-1).id;
+        for (const candidate of candidates) {
+          cursor -= candidate.weight;
+          if (cursor <= 0) { chosenId = candidate.id; break; }
+        }
+      } else {
+        chosenId = Math.floor(unitHash(this.seed, "relay", key) * this.components.length) % this.components.length;
+      }
+      if (!this.light(chosenId, now, "relay") && this.emberAt === null) this.emberAt = now + this.config.emberDelay;
+    }
+
+    fireEmber(now) {
+      if (this.emberAt === null || this.emberAt > now + 1e-9) return;
+      this.emberAt = null;
+      if (this.manager.active.size > 0 || this.target(now) < 0.5) return;
+      const id = Math.floor(unitHash(this.seed, "ember", this.emberCount) * this.components.length) % this.components.length;
+      this.emberCount += 1;
+      this.light(id, now, "ember");
+    }
+
+    snapshot(now) {
+      return {
+        target: Number(this.target(now).toFixed(3)),
+        band: Number(this.band(now).toFixed(3)),
+        ramp: Number(this.ramp(now).toFixed(4)),
+        boost: Number(this.boost(now).toFixed(3)),
+        range: { ...this.range },
+        config: { ...this.config },
+        lit: this.manager.active.size,
+        pendingSparks: this.sparks.length,
+        sparkCount: this.sparkCount,
+        spawnCount: this.spawnCount,
+        seedCount: this.seedCount,
+        emberCount: this.emberCount,
+        relayCount: this.relayCount,
+      };
+    }
+  }
+
+  function advanceRippleInterval(manager, conductor, fromTime, toTime) {
+    const events = [];
+    const finished = [];
+    let cursor = fromTime;
+    for (let guard = 0; guard < 8192; guard += 1) {
+      const boundary = conductor.nextBoundary(cursor);
+      if (boundary > toTime + 1e-9 || !Number.isFinite(boundary)) break;
+      events.push(...manager.eventsBetween(cursor, boundary));
+      cursor = boundary;
+      const boundaryFinished = manager.update(boundary);
+      conductor.handleFinished(boundaryFinished, boundary);
+      conductor.fireEmber(boundary);
+      conductor.fireSparks(boundary);
       finished.push(...boundaryFinished);
     }
     events.push(...manager.eventsBetween(cursor, toTime));
@@ -1216,32 +1525,37 @@
   const world = buildWorld(seed);
   const audio = new AudioEngine(querySoundIntent());
   const performance = queryPerformance();
+  const rippleConfig = resolveRippleConfig(window.location.search, window.KINETIC_MAZE_CONFIG?.ripple);
+  const litRange = Object.freeze({ min: rippleConfig.litMin, max: rippleConfig.litMax });
   let manager = null;
   let growth = null;
+  let ripple = null;
   let interaction = null;
-  let mode = performance.isExport ? "growth" : queryMode();
+  const requestedMode = performance.isExport ? "growth" : queryMode();
+  let mode = requestedMode === "ripple" ? "idle" : requestedMode;
   let logicalTime = 0;
   let previousTimestamp = null;
   let lastEventTime = 0;
   let playing = true;
   let frameRequest = null;
+  const trail = [];
+  const seedMarks = [];
+  let pointerTracking = null;
+  let hintUntil = 0;
 
   function updateModeControl() {
-    const interactiveSide = mode === "interactive" || mode === "drainingToGrowth";
-    modeControl.setAttribute("aria-pressed", String(interactiveSide));
-    modeControl.textContent = mode === "growth" ? "◎ 自动生长" : mode === "interactive" ? "☝ 点击试听" : "… 完成本轮";
-    canvas.classList.toggle("is-interactive", mode === "interactive");
+    canvas.classList.toggle("is-interactive", mode === "interactive" || mode === "ripple");
   }
 
   function updateSoundControl() {
     const state = audio.diagnostics();
-    soundControl.setAttribute("aria-pressed", String(state.enabled));
-    soundControl.textContent = state.enabled ? "♪ 声音开" : state.intentOn ? "♪ 点一下开声" : "♪ 声音关";
+    if (statusLabel && !state.enabled && state.intentOn && state.contextState === "suspended" && mode !== "idle") statusLabel.textContent = "点一下画面开启声音";
   }
 
   function installGrowthRuntime() {
     manager = new ActivationManager(world.components);
     growth = new PopulationConductor(seed, world.components, manager, { exportMode: performance.isExport });
+    ripple = null;
     interaction = null;
     mode = "growth";
     logicalTime = 0;
@@ -1254,6 +1568,7 @@
   function installInteractionRuntime() {
     manager = new ActivationManager(world.components);
     growth = null;
+    ripple = null;
     interaction = new InteractionController(manager, world.components, 6);
     mode = "interactive";
     logicalTime = 0;
@@ -1262,20 +1577,40 @@
     updateModeControl();
   }
 
-  function finishTransitionIfPossible() {
-    if (mode === "drainingToInteractive" && manager.active.size === 0) {
-      interaction = new InteractionController(manager, world.components, 6);
-      mode = "interactive";
-      updateModeControl();
-      statusLabel.textContent = "点击任意机关，完整试听一次";
-    } else if (mode === "drainingToGrowth" && interaction?.isIdle()) {
-      installGrowthRuntime();
-      statusLabel.textContent = "自动生长已从 1 个机关重新开始";
-    }
+  function installRippleRuntime() {
+    manager = new ActivationManager(world.components);
+    growth = null;
+    interaction = null;
+    ripple = new RippleConductor(seed, world.components, manager, rippleConfig);
+    mode = "ripple";
+    logicalTime = 0;
+    lastEventTime = 0;
+    previousTimestamp = null;
+    trail.length = 0;
+    seedMarks.length = 0;
+    ripple.fireEmber(0);
+    hintUntil = rippleConfig.hintSeconds;
+    updateModeControl();
+  }
+
+  function installIdleRuntime() {
+    manager = new ActivationManager(world.components);
+    growth = null;
+    ripple = null;
+    interaction = null;
+    mode = "idle";
+    logicalTime = 0;
+    lastEventTime = 0;
+    previousTimestamp = null;
+    updateModeControl();
   }
 
   function frame(timestamp) {
     if (!playing) return;
+    if (mode === "idle") {
+      frameRequest = requestAnimationFrame(frame);
+      return;
+    }
     if (previousTimestamp === null) previousTimestamp = timestamp;
     const delta = Math.min(0.1, Math.max(0, (timestamp - previousTimestamp) / 1000));
     previousTimestamp = timestamp;
@@ -1286,99 +1621,171 @@
       const advanced = advanceGrowthInterval(manager, growth, lastEventTime, logicalTime);
       events = advanced.events;
       finished = advanced.finished;
+    } else if (mode === "ripple") {
+      const advanced = advanceRippleInterval(manager, ripple, lastEventTime, logicalTime);
+      events = advanced.events;
+      finished = advanced.finished;
     } else {
       events = manager.eventsBetween(lastEventTime, logicalTime);
       finished = manager.update(logicalTime);
     }
     audio.play(events, logicalTime, manager.snapshot(logicalTime).litCount);
     lastEventTime = logicalTime;
-    if (mode === "interactive" || mode === "drainingToGrowth") interaction.handleFinished(finished);
-    finishTransitionIfPossible();
+    if (mode === "interactive") interaction.handleFinished(finished);
     const snapshot = manager.snapshot(logicalTime);
     audio.syncFriction(snapshot.active, world.components, logicalTime, snapshot.litCount);
     render(world, manager, logicalTime, interaction);
+    if (mode === "ripple") drawRippleOverlay(logicalTime);
     if (mode === "growth") {
       statusLabel.textContent = `${Math.floor(logicalTime)}s · ${snapshot.litCount}/${MAX_LIT} 已亮 · 全部正在演奏`;
+    } else if (mode === "ripple") {
+      const rippleSnapshot = ripple.snapshot(logicalTime);
+      statusLabel.textContent = `${Math.floor(logicalTime)}s · ${snapshot.litCount} 已亮 · 目标 ${Math.round(rippleSnapshot.target)} · 区间 ${litRange.min}–${litRange.max}`;
     } else if (mode === "interactive") {
       const interactionSnapshot = interaction.snapshot(logicalTime);
       statusLabel.textContent = `${interactionSnapshot.active.length} 正在完整演奏 · ${interactionSnapshot.queue.length} 排队`;
-    } else if (mode === "drainingToInteractive") {
-      statusLabel.textContent = `等待 ${snapshot.active.length} 个已开始动作自然结束`;
-    } else {
-      const interactionSnapshot = interaction.snapshot(logicalTime);
-      statusLabel.textContent = `等待 ${interactionSnapshot.active.length + interactionSnapshot.queue.length} 个试听完整结束`;
     }
     frameRequest = requestAnimationFrame(frame);
   }
 
-  playControl.addEventListener("click", () => {
-    playing = !playing;
-    playControl.setAttribute("aria-pressed", String(playing));
-    playControl.textContent = playing ? "Ⅱ 暂停" : "▶ 播放";
-    previousTimestamp = null;
-    if (playing) frameRequest = requestAnimationFrame(frame);
-    else if (frameRequest !== null) cancelAnimationFrame(frameRequest);
-  });
+  function drawRippleOverlay(now) {
+    const trailSeconds = rippleConfig.trailSeconds;
+    const seedMarkSeconds = rippleConfig.seedMarkSeconds;
+    while (trail.length && now - trail[0].t > trailSeconds) trail.shift();
+    while (seedMarks.length && now - seedMarks[0].t > seedMarkSeconds) seedMarks.shift();
+    draw.save();
+    draw.lineCap = "round";
+    draw.lineJoin = "round";
+    for (let index = 1; index < trail.length; index += 1) {
+      const from = trail[index - 1];
+      const to = trail[index];
+      if (to.t - from.t > 0.25) continue;
+      const age = clamp((now - to.t) / trailSeconds);
+      const alpha = (1 - age) * 0.55;
+      if (alpha <= 0.01) continue;
+      draw.strokeStyle = COLORS.halo;
+      draw.globalAlpha = alpha;
+      draw.lineWidth = lerp(16, 3, age);
+      draw.shadowColor = COLORS.halo;
+      draw.shadowBlur = lerp(28, 6, age);
+      draw.beginPath();
+      draw.moveTo(from.x, from.y);
+      draw.lineTo(to.x, to.y);
+      draw.stroke();
+    }
+    draw.shadowBlur = 0;
+    for (const mark of seedMarks) {
+      const age = clamp((now - mark.t) / seedMarkSeconds);
+      const eased = smoothstep(age);
+      draw.strokeStyle = mark.color;
+      draw.globalAlpha = (1 - eased) * 0.9;
+      draw.lineWidth = lerp(4, 1.5, eased);
+      draw.beginPath();
+      draw.arc(mark.x, mark.y, lerp(10, Math.min(CELL_W, CELL_H) * 0.62, eased), 0, TAU);
+      draw.stroke();
+    }
+    if (hintLabel && hintUntil > 0) {
+      const remaining = hintUntil - now;
+      hintLabel.style.opacity = String(clamp(remaining / 1.2));
+      if (remaining <= 0) { hintUntil = 0; hintLabel.hidden = true; }
+    }
+    draw.restore();
+  }
 
-  soundControl.addEventListener("click", async () => {
+  function canvasPointFromEvent(event) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: (event.clientX - rect.left) * WIDTH / rect.width, y: (event.clientY - rect.top) * HEIGHT / rect.height };
+  }
+
+  /** 沿指针轨迹采样命中的格子（按经过顺序去重），快速划过也不会漏格。 */
+  function cellsAlongSegment(from, to) {
+    const ids = [];
+    const distance = Math.hypot(to.x - from.x, to.y - from.y);
+    const steps = Math.max(1, Math.ceil(distance / (Math.min(CELL_W, CELL_H) * rippleConfig.sweepStep)));
+    let previous = null;
+    for (let step = 0; step <= steps; step += 1) {
+      const amount = step / steps;
+      const component = hitTestCanvasPoint(lerp(from.x, to.x, amount), lerp(from.y, to.y, amount));
+      if (!component || component.id === previous) continue;
+      previous = component.id;
+      if (!ids.includes(component.id)) ids.push(component.id);
+    }
+    return ids;
+  }
+
+  function sweep(point, event) {
+    const from = pointerTracking?.last ?? point;
+    const ids = cellsAlongSegment(from, point);
+    trail.push({ x: point.x, y: point.y, t: logicalTime });
+    if (trail.length > 240) trail.shift();
+    pointerTracking = { last: point, pointerId: event.pointerId };
+    const fresh = ids.filter((id) => !manager.active.has(id));
+    if (!fresh.length) return;
+    const started = ripple.seedMany(fresh, logicalTime);
+    for (const activation of started) {
+      const component = world.components[activation.componentId];
+      seedMarks.push({ x: component.centerX, y: component.centerY, t: logicalTime, color: TYPE_COLORS[component.type] });
+    }
+    if (seedMarks.length > 96) seedMarks.splice(0, seedMarks.length - 96);
+  }
+
+  function pointerIsSweeping(event) {
+    if (event.pointerType === "mouse") return true;
+    return event.buttons > 0 || event.pressure > 0 || event.type === "pointerdown";
+  }
+
+  async function startExperience() {
+    if (mode !== "idle") return;
+    installRippleRuntime();
+    if (chrome) chrome.hidden = true;
+    if (hintLabel) { hintLabel.hidden = false; hintLabel.style.opacity = "1"; }
     try {
-      await audio.toggle();
-      updateSoundControl();
-      lastEventTime = logicalTime;
+      await audio.ensureEnabled();
     } catch (error) {
       console.error(error);
-      statusLabel.textContent = "浏览器未允许声音，请重试";
     }
-  });
+    updateSoundControl();
+    lastEventTime = logicalTime;
+  }
 
-  modeControl.addEventListener("click", async () => {
-    if (mode === "drainingToInteractive" || mode === "drainingToGrowth") return;
-    if (mode === "growth") {
-      try {
-        const enabled = await audio.ensureEnabled();
-        if (!enabled) throw new Error("Web Audio is unavailable.");
-        updateSoundControl();
-        lastEventTime = logicalTime;
-        mode = "drainingToInteractive";
-        growth.stopReplacing();
-        growth = null;
-        manager.drainPersistent(logicalTime);
-        updateModeControl();
-        finishTransitionIfPossible();
-      } catch (error) {
-        console.error(error);
-        statusLabel.textContent = "浏览器未允许声音，无法进入点击试听";
-      }
-    } else {
-      interaction.stopAccepting();
-      mode = "drainingToGrowth";
-      updateModeControl();
-      finishTransitionIfPossible();
-    }
-  });
+  if (startControl) startControl.addEventListener("click", () => { startExperience(); });
 
-  canvas.addEventListener("pointerdown", async (event) => {
+  canvas.addEventListener("pointerdown", (event) => {
     event.preventDefault();
-    try {
-      const enabled = await audio.ensureEnabled();
-      if (!enabled) throw new Error("Web Audio is unavailable.");
-      updateSoundControl();
-      lastEventTime = logicalTime;
-      if (mode !== "interactive") return;
-      const rect = canvas.getBoundingClientRect();
-      const x = (event.clientX - rect.left) * WIDTH / rect.width;
-      const y = (event.clientY - rect.top) * HEIGHT / rect.height;
-      const component = hitTestCanvasPoint(x, y);
-      if (!component) return;
-      const result = interaction.request(component.id, logicalTime);
-      if (result.status === "alreadyPlaying") statusLabel.textContent = "这个机关正在完成本轮，结束后可再次点击";
-      else if (result.status === "queued") statusLabel.textContent = `${TYPE_LABELS[component.type]} 已排在第 ${result.queuePosition} 位`;
-      else statusLabel.textContent = `${TYPE_LABELS[component.type]} 开始完整演奏`;
-    } catch (error) {
-      console.error(error);
-      statusLabel.textContent = "浏览器未允许声音，请重试";
+    if (mode === "idle") return;
+    if (!audio.enabled && audio.intentOn) {
+      audio.ensureEnabled().then(() => { updateSoundControl(); lastEventTime = logicalTime; }).catch((error) => console.error(error));
     }
+    if (mode === "ripple") {
+      pointerTracking = null;
+      sweep(canvasPointFromEvent(event), event);
+      return;
+    }
+    if (mode !== "interactive") return;
+    const point = canvasPointFromEvent(event);
+    const component = hitTestCanvasPoint(point.x, point.y);
+    if (!component) return;
+    const result = interaction.request(component.id, logicalTime);
+    if (result.status === "alreadyPlaying") statusLabel.textContent = "这个机关正在完成本轮，结束后可再次点击";
+    else if (result.status === "queued") statusLabel.textContent = `${TYPE_LABELS[component.type]} 已排在第 ${result.queuePosition} 位`;
+    else statusLabel.textContent = `${TYPE_LABELS[component.type]} 开始完整演奏`;
   });
+
+  canvas.addEventListener("pointermove", (event) => {
+    if (mode !== "ripple" || !pointerIsSweeping(event)) return;
+    event.preventDefault();
+    if (pointerTracking && pointerTracking.pointerId !== event.pointerId) return;
+    const samples = typeof event.getCoalescedEvents === "function" ? event.getCoalescedEvents() : [];
+    for (const sample of samples.length ? samples : [event]) sweep(canvasPointFromEvent(sample), event);
+  });
+
+  const endSweep = (event) => {
+    if (pointerTracking && pointerTracking.pointerId === event.pointerId) pointerTracking = null;
+    if (event.pointerType === "mouse") pointerTracking = null;
+  };
+  canvas.addEventListener("pointerup", endSweep);
+  canvas.addEventListener("pointercancel", endSweep);
+  canvas.addEventListener("pointerleave", endSweep);
 
   function previewOneShot(componentId, stepSeconds = 1 / 60) {
     const preview = new ActivationManager(world.components);
@@ -1781,13 +2188,112 @@
     };
   }
 
+  function previewRipple(previewSeed = seed, seconds = 240, stepSeconds = 1 / 60, options = {}) {
+    const previewWorld = buildWorld(previewSeed);
+    const previewManager = new ActivationManager(previewWorld.components);
+    const conductor = new RippleConductor(previewSeed, previewWorld.components, previewManager, { ...rippleConfig, ...(options.config || {}), ...(options.min !== undefined ? { litMin: options.min } : {}), ...(options.max !== undefined ? { litMax: options.max } : {}) });
+    conductor.fireEmber(0);
+    const sweeps = [...(options.sweeps || [])].sort((left, right) => left.at - right.at);
+    const events = [];
+    const litCurve = [];
+    const targetCurve = [];
+    let sweepIndex = 0;
+    let previous = 0;
+    let nextSample = 0;
+    let maxLit = 0;
+    const advance = (to) => {
+      const advanced = advanceRippleInterval(previewManager, conductor, previous, to);
+      for (const event of advanced.events) events.push({ at: Number(event.at.toFixed(6)), componentId: event.componentId, kind: event.kind, activationId: event.activationId });
+      previous = to;
+    };
+    for (let time = 0; time <= seconds + 1e-9; time += stepSeconds) {
+      while (sweepIndex < sweeps.length && sweeps[sweepIndex].at <= time + 1e-9) {
+        const sweep = sweeps[sweepIndex++];
+        advance(sweep.at);
+        conductor.seedMany(sweep.componentIds, sweep.at);
+      }
+      advance(time);
+      const lit = previewManager.snapshot(time).litCount;
+      maxLit = Math.max(maxLit, lit);
+      if (time >= nextSample - 1e-9) {
+        litCurve.push({ at: Number(time.toFixed(3)), lit });
+        targetCurve.push({ at: Number(time.toFixed(3)), target: Number(conductor.target(time).toFixed(3)) });
+        nextSample += 1;
+      }
+    }
+    return {
+      seed: previewSeed,
+      range: { ...conductor.range },
+      events,
+      activations: previewManager.allActivations.map((activation) => ({ id: activation.id, componentId: activation.componentId, startedAt: Number(activation.startedAt.toFixed(6)), completeAt: Number(activation.completeAt.toFixed(6)), cycleCount: activation.cycleCount })),
+      log: conductor.log.map((entry) => ({ ...entry })),
+      litCurve,
+      targetCurve,
+      maxLit,
+      finalLit: previewManager.snapshot(seconds).litCount,
+      stats: conductor.snapshot(seconds),
+    };
+  }
+
+  function auditRipple(previewSeed = seed, seconds = 240) {
+    const preview60 = previewRipple(previewSeed, seconds, 1 / 60);
+    const preview30 = previewRipple(previewSeed, seconds, 1 / 30);
+    const litAt = (at) => preview60.litCurve.find((sample) => Math.abs(sample.at - at) < 1e-6)?.lit ?? null;
+    const sweepIds = [40, 41, 42, 43, 44, 53, 62, 71];
+    const swept = previewRipple(previewSeed, 40, 1 / 60, { sweeps: [{ at: 12, componentIds: sweepIds }] });
+    const sweptLitAt12 = swept.activations.filter((activation) => Math.abs(activation.startedAt - 12) < 1e-9).map((activation) => activation.componentId);
+    const sweepLog = swept.log.filter((entry) => entry.source === "seed");
+    const spawnLog = preview60.log.filter((entry) => entry.source === "spark");
+    const componentsById = buildWorld(previewSeed).components;
+    const activeAt = (log, at) => new Set(preview60.activations.filter((activation) => activation.startedAt < at - 1e-9 && activation.completeAt > at + 1e-9).map((activation) => activation.componentId));
+    const allSpawnsAdjacent = spawnLog.every((entry) => {
+      const parents = activeAt(preview60.log, entry.at);
+      const cell = componentsById[entry.componentId].cell;
+      return [...parents].some((parentId) => Math.max(Math.abs(componentsById[parentId].cell.row - cell.row), Math.abs(componentsById[parentId].cell.col - cell.col)) <= 2);
+    });
+    return {
+      seed: previewSeed,
+      range: preview60.range,
+      deterministicAcrossFrameRates: JSON.stringify(preview60.events) === JSON.stringify(preview30.events) && JSON.stringify(preview60.activations) === JSON.stringify(preview30.activations),
+      startsWithOne: preview60.litCurve[0]?.lit === 1 && preview60.log[0]?.source === "ember",
+      emberCount: preview60.log.filter((entry) => entry.source === "ember").length,
+      relayCount: preview60.log.filter((entry) => entry.source === "relay").length,
+      litAt10: litAt(10),
+      litAt30: litAt(30),
+      litAt60: litAt(60),
+      litAt120: litAt(120),
+      litAt240: litAt(seconds),
+      maxLit: preview60.maxLit,
+      minLitAfterRamp: Math.min(...preview60.litCurve.filter((sample) => sample.at >= 90).map((sample) => sample.lit)),
+      neverEmpty: preview60.litCurve.every((sample) => sample.lit >= 1),
+      allCycleCountsBounded: preview60.activations.every((activation) => activation.cycleCount >= 1 && activation.cycleCount <= 3),
+      allSpawnsAdjacent,
+      spawnCount: spawnLog.length,
+      sweepSeededAll: sweepIds.every((id) => sweptLitAt12.includes(id)) && sweepLog.length === sweepIds.length,
+      sweepBoosted: swept.targetCurve.find((sample) => Math.abs(sample.at - 12) < 1e-6)?.target > preview60.targetCurve.find((sample) => Math.abs(sample.at - 12) < 1e-6)?.target,
+    };
+  }
+
   window.__KINETIC_V4_DEBUG__ = Object.freeze({
-    version: "4.2-p4.2-t1",
-    getSnapshot: () => ({ mode, ...manager.snapshot(logicalTime), interaction: interaction?.snapshot(logicalTime) || null }),
+    version: "4.3-ripple-t1",
+    getSnapshot: () => ({ mode, ...manager.snapshot(logicalTime), interaction: interaction?.snapshot(logicalTime) || null, ripple: ripple?.snapshot(logicalTime) || null }),
     getAudioState: () => audio.diagnostics(),
     getComponents: () => world.components.map((component) => ({ id: component.id, type: component.type, basePeriod: basePeriod(component), tailDuration: tailDuration(component), eventCountPerCycle: eventBlueprints(component).length, geometry: component.type === "glider" ? { edgeKeys: [...component.variant.route.edgeKeys] } : null })),
     getGrowthPlan: () => growth?.planSnapshot() || previewGrowth(seed, 0).plan,
+    getLitRange: () => ({ ...litRange }),
+    getRippleConfig: () => ({ ...rippleConfig }),
+    getRippleDefaults: () => ({ ...RIPPLE_DEFAULTS }),
+    resolveRippleConfig: (search, hostConfig) => ({ ...resolveRippleConfig(search, hostConfig) }),
     hitTestPoint: (x, y) => hitTestCanvasPoint(x, y)?.id ?? null,
+    start: () => startExperience(),
+    step: (seconds = 1 / 60) => {
+      if (frameRequest !== null) cancelAnimationFrame(frameRequest);
+      const base = previousTimestamp ?? 0;
+      previousTimestamp = base;
+      frame(base + Math.max(0, seconds) * 1000);
+      return logicalTime;
+    },
+    sweepCells: (componentIds) => (mode === "ripple" ? ripple.seedMany(componentIds, logicalTime).length : 0),
     auditDarkFreeze,
     auditGrowth,
     auditGeometry,
@@ -1796,23 +2302,32 @@
     auditAudioSmoke,
     auditInteraction,
     auditPerformance,
+    auditRipple,
     previewGrowth,
     previewPerformance,
     previewInteraction,
     previewOneShot,
+    previewRipple,
   });
 
   seedLabel.textContent = `Seed — ${seed}`;
-  if (mode === "interactive") installInteractionRuntime(); else installGrowthRuntime();
-  updateSoundControl();
+  if (mode === "interactive") installInteractionRuntime();
+  else if (mode === "growth") installGrowthRuntime();
+  else installIdleRuntime();
+  const metaBar = document.querySelector("#meta-bar");
+  if (metaBar) metaBar.hidden = requestedMode === "ripple" && new URLSearchParams(window.location.search).get("debug") === null;
+  if (chrome) chrome.hidden = mode !== "idle";
+  if (mode === "growth" && !performance.isExport && statusLabel) statusLabel.textContent = "自动生长（旧版演示）";
   render(world, manager, 0, interaction);
   frameRequest = requestAnimationFrame(frame);
-  audio.attemptAutoplay().then((enabled) => {
-    updateSoundControl();
-    lastEventTime = logicalTime;
-    if (!enabled && audio.intentOn && audio.diagnostics().contextState === "suspended") statusLabel.textContent = "点一下画面开启声音";
-  }).catch((error) => {
-    console.error(error);
-    updateSoundControl();
-  });
+  if (mode !== "idle") {
+    audio.attemptAutoplay().then((enabled) => {
+      updateSoundControl();
+      lastEventTime = logicalTime;
+      if (!enabled && audio.intentOn && audio.diagnostics().contextState === "suspended") statusLabel.textContent = "点一下画面开启声音";
+    }).catch((error) => {
+      console.error(error);
+      updateSoundControl();
+    });
+  }
 })();

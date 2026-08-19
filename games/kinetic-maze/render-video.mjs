@@ -270,7 +270,7 @@ function createRuntime(seed) {
   const canvas = new MockCanvas(raster);
   const elements = new Map([
     ["#kinetic-maze-v4", canvas], ["#seed-label", new MockElement()], ["#status-label", new MockElement()],
-    ["#play-control", new MockElement()], ["#sound-control", new MockElement()], ["#mode-control", new MockElement()],
+    ["#start-control", new MockElement()], ["#chrome", new MockElement()], ["#hint-label", new MockElement()], ["#meta-bar", new MockElement()],
   ]);
   let scheduledFrame = null;
   const sandbox = {
@@ -469,7 +469,7 @@ async function main() {
   const temporaryVideo = path.join("/private/tmp", `${basename}-video-${process.pid}.mp4`);
   const temporaryAudio = path.join("/private/tmp", `${basename}-audio-${process.pid}.wav`);
   const runtime = createRuntime(options.seed);
-  if (runtime.debug.version !== "4.2-p4.2-t1") throw new Error(`Unexpected V4 runtime ${runtime.debug.version}.`);
+  if (runtime.debug.version !== "4.3-ripple-t1") throw new Error(`Unexpected V4 runtime ${runtime.debug.version}.`);
   const performance = runtime.debug.previewPerformance(options.seed, options.duration, 1 / 60);
   console.log(`[plan] seed=${options.seed} duration=${options.duration}s activations=${performance.activations.length} events=${performance.events.length}`);
   try {
