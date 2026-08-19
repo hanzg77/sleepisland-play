@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>几何机关 v4.1 · 128 声部生长</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #03070a;
+      --stage: #071015;
+      --ink: #d8e5e9;
+      --muted: rgba(216, 229, 233, 0.6);
+      --panel: rgba(8, 18, 24, 0.88);
+      --line: rgba(216, 229, 233, 0.14);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--page);
+    }
+
+    body {
+      min-height: 100svh;
+      color: var(--ink);
+      font-family: ui-rounded, "SF Pro Rounded", "SF Pro Display", system-ui, sans-serif;
+    }
+
+    main {
+      display: grid;
+      width: 100%;
+      height: 100svh;
+      place-items: center;
+      padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    }
+
+    .stage {
+      position: relative;
+      width: min(calc((100svh - 24px) * 0.5625), calc(100vw - 24px));
+      aspect-ratio: 9 / 16;
+      overflow: hidden;
+      border: 1px solid rgba(216, 229, 233, 0.1);
+      border-radius: clamp(14px, 2.4vw, 28px);
+      background: var(--stage);
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.62);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: var(--stage);
+      touch-action: none;
+    }
+
+    canvas.is-interactive { cursor: crosshair; }
+
+    .chrome {
+      position: absolute;
+      right: clamp(10px, 2vw, 20px);
+      bottom: clamp(10px, 2vw, 20px);
+      left: clamp(10px, 2vw, 20px);
+      display: grid;
+      gap: 7px;
+      pointer-events: none;
+    }
+
+    .meta,
+    .control {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: 0 8px 26px rgba(0, 0, 0, 0.38);
+      backdrop-filter: blur(18px);
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 34px;
+      padding: 9px 12px;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: clamp(8px, 1.8vw, 12px);
+      letter-spacing: 0.05em;
+    }
+
+    .meta__seed {
+      overflow: hidden;
+      color: var(--ink);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      pointer-events: auto;
+    }
+
+    .control {
+      min-height: 40px;
+      padding: 8px;
+      border-radius: 999px;
+      appearance: none;
+      color: var(--ink);
+      cursor: pointer;
+      font: 700 clamp(8px, 1.8vw, 11px) / 1 ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+    }
+
+    .control[aria-pressed="true"] { color: #061015; background: var(--ink); }
+    .control:active { transform: translateY(1px); }
+
+    @media (max-aspect-ratio: 9 / 16) {
+      main { padding: 0; }
+      .stage { width: 100vw; max-height: 100svh; border: 0; border-radius: 0; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="stage" aria-label="1080 × 1920 几何机关 v4">
+      <canvas id="kinetic-maze-v4" width="1080" height="1920" aria-label="亮起才演奏的几何机关"></canvas>
+      <div class="chrome">
+        <div class="meta" aria-live="polite">
+          <span class="meta__seed" id="seed-label">Seed —</span>
+          <span id="status-label">正在建立 V4</span>
+        </div>
+        <div class="controls">
+          <button class="control" id="play-control" type="button" aria-pressed="true">Ⅱ 暂停</button>
+          <button class="control" id="sound-control" type="button" aria-pressed="false">♪ 点一下开声</button>
+          <button class="control" id="mode-control" type="button" aria-pressed="false" title="自动生长或点击试听">◎ 自动生长</button>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script src="./kinetic-maze-v4.js?v=41-t4"></script>
+</body>
+</html>
