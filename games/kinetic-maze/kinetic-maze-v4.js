@@ -134,13 +134,14 @@
     seedMarkSeconds: 0.7,    // 种子扩散环时长（秒）
     hintSeconds: 6,          // 开始后提示文字停留时间（秒）
     sweepStep: 0.35,         // 轨迹采样步长（相对最小格边）
+    renderFps: 30,           // 画面重绘上限（帧/秒）；逻辑与声音仍按每个 rAF 推进，不受影响
   });
 
   const RIPPLE_URL_KEYS = Object.freeze({
     lit: ["litMin", "litMax"], ramp: "rampSeconds", rampCurve: "rampCurve", wander: "wanderPeriods", wanderWeights: "wanderWeights", wanderDepth: "wanderDepth",
     boost: "boostPerSeed", boostDecay: "boostDecay", sparkAccent: "sparkAccent", sparkCap: "sparkCap", sparkGain: "sparkGain", sparkFloor: "sparkFloor",
     cycles: ["cyclesMin", "cyclesMax"], neighborOrthogonal: "neighborOrthogonal", neighborDiagonal: "neighborDiagonal", ring2Orthogonal: "ring2Orthogonal", ring2Diagonal: "ring2Diagonal",
-    emberDelay: "emberDelay", trail: "trailSeconds", seedMark: "seedMarkSeconds", hint: "hintSeconds", sweepStep: "sweepStep",
+    emberDelay: "emberDelay", trail: "trailSeconds", seedMark: "seedMarkSeconds", hint: "hintSeconds", sweepStep: "sweepStep", fps: "renderFps",
   });
 
   function parseNumberList(raw, length) {
@@ -163,6 +164,7 @@
     result.cyclesMax = clamp(Math.round(result.cyclesMax), result.cyclesMin, 8);
     result.emberDelay = Math.max(0, result.emberDelay);
     result.sweepStep = clamp(result.sweepStep, 0.05, 1);
+    result.renderFps = clamp(result.renderFps, 1, 120);
     return Object.freeze(result);
   }
 
@@ -1284,7 +1286,7 @@
       source.stop(when + options.decay + 0.02);
     }
 
-    startFriction(activation, component) {
+    startFriction(activation, component, remainingSeconds = Infinity) {
       if (!this.enabled || !this.context || !this.frictionBuffer || this.frictionVoices.has(activation.id)) return;
       const source = this.context.createBufferSource();
       const filter = this.context.createBiquadFilter();
@@ -1300,6 +1302,8 @@
       gain.gain.value = 0.0001;
       source.connect(filter); filter.connect(gain); gain.connect(panner); panner.connect(this.input);
       source.start();
+      // 硬停止：即使页面被隐藏、rAF 不再驱动 syncFriction，噪声源也会在该次亮起结束时自行结束。
+      if (Number.isFinite(remainingSeconds)) source.stop(this.context.currentTime + Math.max(0.05, remainingSeconds) + 0.25);
       this.frictionVoices.set(activation.id, { source, gain, componentId: component.id });
       this.gliderFrictionStarts += 1;
     }
@@ -1326,13 +1330,18 @@
         const component = components[activation.componentId];
         if (component?.type !== "glider" || logicalNow < activation.startedAt || logicalNow >= activation.completeAt) continue;
         desired.add(activation.id);
-        this.startFriction(activation, component);
+        this.startFriction(activation, component, activation.completeAt - logicalNow);
         const voice = this.frictionVoices.get(activation.id);
         if (!voice) continue;
         const progress = ((logicalNow - activation.startedAt) % activation.basePeriod) / activation.basePeriod;
         const speed = Math.abs(Math.sin(progress * TAU));
         const materialScale = component.variant.material === "felt" ? 0.65 : component.variant.material === "metal" ? 1.08 : 0.88;
-        voice.gain.gain.setTargetAtTime(0.0001 + speed * 0.012 * materialScale * densityScale, this.context.currentTime, 0.035);
+        const now = this.context.currentTime;
+        // 看门狗：每帧先取消旧的自动化，再设当前电平并预约 0.3 s 后自动衰减到静音。
+        // 只要帧循环还在，衰减永远不会触发；帧一停（切后台、页面被遮住），摩擦声半秒内自己消失。
+        voice.gain.gain.cancelScheduledValues(now);
+        voice.gain.gain.setTargetAtTime(0.0001 + speed * 0.012 * materialScale * densityScale, now, 0.035);
+        voice.gain.gain.setTargetAtTime(0.0001, now + 0.3, 0.08);
       }
       for (const activationId of [...this.frictionVoices.keys()]) if (!desired.has(activationId)) this.stopFriction(activationId);
     }
@@ -1365,6 +1374,36 @@
       }
     }
 
+    /** 页面隐藏 / 离开：立即停掉所有连续声源并挂起 AudioContext，保证没有任何声音残留。 */
+    async sleep() {
+      if (!this.context) return;
+      this.stopAllFriction();
+      if (this.master) {
+        const now = this.context.currentTime;
+        this.master.gain.cancelScheduledValues(now);
+        this.master.gain.setTargetAtTime(0.0001, now, 0.02);
+      }
+      this.enabled = false;
+      if (this.context.state === "running") {
+        try { await this.context.suspend(); } catch (_) { /* Already closing. */ }
+      }
+    }
+
+    async wake() {
+      if (!this.context || !this.intentOn) return false;
+      if (this.context.state === "suspended") {
+        try { await this.context.resume(); } catch (_) { return false; }
+      }
+      return this.context.state === "running" ? this.setEnabled(true) : false;
+    }
+
+    async close() {
+      if (!this.context) return;
+      this.stopAllFriction();
+      this.enabled = false;
+      try { await this.context.close(); } catch (_) { /* Already closed. */ }
+    }
+
     diagnostics() {
       return { intentOn: this.intentOn, initialized: Boolean(this.context), contextState: this.context?.state || "unavailable", enabled: this.enabled, scheduledEventCount: this.scheduledEventCount, gliderContactEvents: this.gliderContactEvents, gliderFrictionStarts: this.gliderFrictionStarts, activeFrictionVoices: this.frictionVoices.size };
     }
@@ -1380,32 +1419,63 @@
     };
   }
 
-  function drawGrid(world) {
-    draw.fillStyle = COLORS.background;
-    draw.fillRect(0, 0, WIDTH, HEIGHT);
-    draw.strokeStyle = COLORS.gridStrong;
-    draw.lineWidth = 4;
-    draw.strokeRect(FRAME.x, FRAME.y, FRAME.width, FRAME.height);
-    draw.strokeStyle = COLORS.grid;
-    draw.lineWidth = 3;
-    draw.beginPath();
+  function paintGrid(context, world) {
+    context.fillStyle = COLORS.background;
+    context.fillRect(0, 0, WIDTH, HEIGHT);
+    context.strokeStyle = COLORS.gridStrong;
+    context.lineWidth = 4;
+    context.strokeRect(FRAME.x, FRAME.y, FRAME.width, FRAME.height);
+    context.strokeStyle = COLORS.grid;
+    context.lineWidth = 3;
+    context.beginPath();
     for (const segment of world.segments) {
-      draw.moveTo(segment.x1, segment.y1);
-      draw.lineTo(segment.x2, segment.y2);
+      context.moveTo(segment.x1, segment.y1);
+      context.lineTo(segment.x2, segment.y2);
     }
-    draw.stroke();
+    context.stroke();
   }
 
-  function styleFor(component, state) {
+  /** 墙图与背景是静态的：真实浏览器里画进离屏画布缓存一次，每帧只 drawImage。无 DOM 的宿主（测试 / 离线导出）退回逐帧绘制。 */
+  let gridCache = null;
+  function drawGrid(world) {
+    if (gridCache === undefined) { paintGrid(draw, world); return; }
+    if (gridCache === null) {
+      const canDrawImage = typeof document.createElement === "function" && typeof draw.drawImage === "function";
+      if (!canDrawImage) { gridCache = undefined; paintGrid(draw, world); return; }
+      const offscreen = document.createElement("canvas");
+      offscreen.width = WIDTH;
+      offscreen.height = HEIGHT;
+      const context = offscreen.getContext("2d", { alpha: false });
+      if (!context) { gridCache = undefined; paintGrid(draw, world); return; }
+      paintGrid(context, world);
+      gridCache = offscreen;
+    }
+    draw.drawImage(gridCache, 0, 0);
+  }
+
+  /**
+   * 发光不用 shadowBlur（Canvas 里最贵的操作，iOS 上尤其重）：
+   * 亮着的机关先用粗线、低透明度画一遍"光晕层"，再正常画一遍。glowPad 让圆点在光晕层里同步放大。
+   */
+  let glowPad = 0;
+  function dot(x, y, radius) {
+    draw.beginPath(); draw.arc(x, y, radius + glowPad, 0, TAU); draw.fill();
+  }
+
+  function styleFor(component, state, pass = "body") {
     const active = state.phase !== "darkFrozen";
-    draw.strokeStyle = active ? TYPE_COLORS[component.type] : COLORS.dark;
-    draw.fillStyle = active ? TYPE_COLORS[component.type] : COLORS.dark;
+    const color = active ? TYPE_COLORS[component.type] : COLORS.dark;
+    draw.strokeStyle = color;
+    draw.fillStyle = color;
+    if (pass === "glow") {
+      draw.globalAlpha = 0.1 + state.pose.energy * 0.12;
+      draw.lineWidth = 9 + state.pose.energy * 6;
+      glowPad = 4 + state.pose.energy * 3;
+      return;
+    }
+    glowPad = 0;
     draw.globalAlpha = active ? 0.82 + state.pose.energy * 0.18 : 0.32;
     draw.lineWidth = active ? 3.4 : 2.1;
-    if (active) {
-      draw.shadowColor = TYPE_COLORS[component.type];
-      draw.shadowBlur = 8 + state.pose.energy * 15;
-    }
   }
 
   function drawPendulum(component, state) {
@@ -1418,14 +1488,14 @@
     const x = anchor.x + directionX * length;
     const y = anchor.y + directionY * length;
     draw.beginPath(); draw.moveTo(anchor.x, anchor.y); draw.lineTo(x, y); draw.stroke();
-    draw.beginPath(); draw.arc(anchor.x, anchor.y, 3.2, 0, TAU); draw.fill();
-    draw.beginPath(); draw.arc(x, y, 9.5, 0, TAU); draw.fill();
+    dot(anchor.x, anchor.y, 3.2);
+    dot(x, y, 9.5);
   }
 
   function drawGlider(component, state) {
     const { size, route } = component.variant;
     const { x, y } = pointAlongRoute(route, state.pose.value);
-    draw.fillRect(x - size / 2, y - size / 2, size, size);
+    draw.fillRect(x - size / 2 - glowPad, y - size / 2 - glowPad, size + glowPad * 2, size + glowPad * 2);
   }
 
   function drawRotor(component, state) {
@@ -1437,7 +1507,7 @@
       const spokeAngle = angle + spoke.onset * TAU;
       draw.beginPath(); draw.moveTo(x, y); draw.lineTo(x + Math.cos(spokeAngle) * variant.radius * spoke.length, y + Math.sin(spokeAngle) * variant.radius * spoke.length); draw.stroke();
     }
-    draw.beginPath(); draw.arc(x, y, 7.5, 0, TAU); draw.fill();
+    dot(x, y, 7.5);
   }
 
   function drawMallet(component, state) {
@@ -1449,8 +1519,8 @@
       const headX = anchor.x + anchor.inwardX * reach;
       const headY = anchor.y + anchor.inwardY * reach;
       draw.beginPath(); draw.moveTo(anchor.x, anchor.y); draw.lineTo(headX, headY); draw.stroke();
-      draw.beginPath(); draw.arc(anchor.x, anchor.y, 2.8, 0, TAU); draw.fill();
-      draw.beginPath(); draw.arc(headX, headY, 7.5, 0, TAU); draw.fill();
+      dot(anchor.x, anchor.y, 2.8);
+      dot(headX, headY, 7.5);
     }
   }
 
@@ -1462,17 +1532,25 @@
     }
     draw.stroke();
     const point = curvePoint(component, state.pose.value);
-    draw.beginPath(); draw.arc(point.x, point.y, 7.5, 0, TAU); draw.fill();
+    dot(point.x, point.y, 7.5);
   }
 
-  function drawComponent(component, state) {
-    draw.save();
-    styleFor(component, state);
+  function drawComponentShape(component, state) {
     if (component.type === "pendulum") drawPendulum(component, state);
     else if (component.type === "glider") drawGlider(component, state);
     else if (component.type === "rotor") drawRotor(component, state);
     else if (component.type === "mallet") drawMallet(component, state);
     else drawRibbon(component, state);
+  }
+
+  function drawComponent(component, state) {
+    draw.save();
+    if (state.phase !== "darkFrozen") {
+      styleFor(component, state, "glow");
+      drawComponentShape(component, state);
+    }
+    styleFor(component, state, "body");
+    drawComponentShape(component, state);
     draw.restore();
   }
 
@@ -1542,6 +1620,8 @@
   const seedMarks = [];
   let pointerTracking = null;
   let hintUntil = 0;
+  let lastRenderAt = -Infinity;
+  let renderDirty = true;
 
   function updateModeControl() {
     canvas.classList.toggle("is-interactive", mode === "interactive" || mode === "ripple");
@@ -1606,11 +1686,8 @@
   }
 
   function frame(timestamp) {
-    if (!playing) return;
-    if (mode === "idle") {
-      frameRequest = requestAnimationFrame(frame);
-      return;
-    }
+    frameRequest = null;
+    if (!playing || mode === "idle") return;
     if (previousTimestamp === null) previousTimestamp = timestamp;
     const delta = Math.min(0.1, Math.max(0, (timestamp - previousTimestamp) / 1000));
     previousTimestamp = timestamp;
@@ -1634,8 +1711,14 @@
     if (mode === "interactive") interaction.handleFinished(finished);
     const snapshot = manager.snapshot(logicalTime);
     audio.syncFriction(snapshot.active, world.components, logicalTime, snapshot.litCount);
-    render(world, manager, logicalTime, interaction);
-    if (mode === "ripple") drawRippleOverlay(logicalTime);
+    // 重绘限频：默认 30 fps。逻辑/声音每个 rAF 都推进，只是画面隔帧刷新，机关运动周期长（2–7 s），肉眼无差别。
+    const renderInterval = 1 / rippleConfig.renderFps;
+    if (mode !== "ripple" || renderDirty || logicalTime - lastRenderAt >= renderInterval - 1e-4) {
+      render(world, manager, logicalTime, interaction);
+      if (mode === "ripple") drawRippleOverlay(logicalTime);
+      lastRenderAt = logicalTime;
+      renderDirty = false;
+    }
     if (mode === "growth") {
       statusLabel.textContent = `${Math.floor(logicalTime)}s · ${snapshot.litCount}/${MAX_LIT} 已亮 · 全部正在演奏`;
     } else if (mode === "ripple") {
@@ -1664,16 +1747,16 @@
       const alpha = (1 - age) * 0.55;
       if (alpha <= 0.01) continue;
       draw.strokeStyle = COLORS.halo;
-      draw.globalAlpha = alpha;
-      draw.lineWidth = lerp(16, 3, age);
-      draw.shadowColor = COLORS.halo;
-      draw.shadowBlur = lerp(28, 6, age);
       draw.beginPath();
       draw.moveTo(from.x, from.y);
       draw.lineTo(to.x, to.y);
+      draw.globalAlpha = alpha * 0.28;
+      draw.lineWidth = lerp(34, 8, age);
+      draw.stroke();
+      draw.globalAlpha = alpha;
+      draw.lineWidth = lerp(12, 3, age);
       draw.stroke();
     }
-    draw.shadowBlur = 0;
     for (const mark of seedMarks) {
       const age = clamp((now - mark.t) / seedMarkSeconds);
       const eased = smoothstep(age);
@@ -1722,6 +1805,7 @@
     const fresh = ids.filter((id) => !manager.active.has(id));
     if (!fresh.length) return;
     const started = ripple.seedMany(fresh, logicalTime);
+    renderDirty = true;
     for (const activation of started) {
       const component = world.components[activation.componentId];
       seedMarks.push({ x: component.centerX, y: component.centerY, t: logicalTime, color: TYPE_COLORS[component.type] });
@@ -1737,6 +1821,8 @@
   async function startExperience() {
     if (mode !== "idle") return;
     installRippleRuntime();
+    renderDirty = true;
+    if (frameRequest === null && playing) frameRequest = requestAnimationFrame(frame);
     if (chrome) chrome.hidden = true;
     if (hintLabel) { hintLabel.hidden = false; hintLabel.style.opacity = "1"; }
     try {
@@ -2287,9 +2373,10 @@
     hitTestPoint: (x, y) => hitTestCanvasPoint(x, y)?.id ?? null,
     start: () => startExperience(),
     step: (seconds = 1 / 60) => {
-      if (frameRequest !== null) cancelAnimationFrame(frameRequest);
+      if (frameRequest !== null) { cancelAnimationFrame(frameRequest); frameRequest = null; }
       const base = previousTimestamp ?? 0;
       previousTimestamp = base;
+      renderDirty = true;
       frame(base + Math.max(0, seconds) * 1000);
       return logicalTime;
     },
@@ -2319,7 +2406,25 @@
   if (chrome) chrome.hidden = mode !== "idle";
   if (mode === "growth" && !performance.isExport && statusLabel) statusLabel.textContent = "自动生长（旧版演示）";
   render(world, manager, 0, interaction);
-  frameRequest = requestAnimationFrame(frame);
+  frameRequest = mode === "idle" ? null : requestAnimationFrame(frame);
+
+  // 页面隐藏 / 离开：静音并挂起音频（防止切后台后摩擦声残留），回来时恢复。rAF 由浏览器自动暂停/恢复。
+  if (typeof document.addEventListener === "function") {
+    const onHidden = () => { previousTimestamp = null; audio.sleep().catch(() => {}); };
+    const onVisible = () => {
+      previousTimestamp = null;
+      lastEventTime = logicalTime;
+      renderDirty = true;
+      audio.wake().then(() => updateSoundControl()).catch(() => {});
+      if (frameRequest === null && playing && mode !== "idle") frameRequest = requestAnimationFrame(frame);
+    };
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") onHidden(); else onVisible(); });
+    if (typeof window.addEventListener === "function") {
+      window.addEventListener("pagehide", onHidden);
+      window.addEventListener("pageshow", onVisible);
+      window.addEventListener("beforeunload", () => { audio.close().catch(() => {}); });
+    }
+  }
   if (mode !== "idle") {
     audio.attemptAutoplay().then((enabled) => {
       updateSoundControl();

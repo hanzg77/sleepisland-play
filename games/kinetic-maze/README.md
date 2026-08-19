@@ -52,10 +52,17 @@
 | `trail=0.9` / `seedMark=0.7` | `trailSeconds` / `seedMarkSeconds` | 0.9 / 0.7 | 划动光迹渐隐 / 种子扩散环时长（秒） |
 | `hint=6` | `hintSeconds` | 6 | 开始后提示文字停留（秒） |
 | `sweepStep=0.35` | `sweepStep` | 0.35 | 轨迹采样步长（相对最小格边） |
+| `fps=30` | `renderFps` | 30 | 画面重绘上限（帧/秒）。逻辑与声音仍按每个 rAF 推进；机关周期 2–7 s，30 fps 肉眼无差别，CPU 约减半 |
 
 区间类参数写法 `min-max`，列表写法逗号分隔；非法值忽略、越界值自动收敛（如 `litMax` 始终 > `litMin`）。`__KINETIC_V4_DEBUG__.getRippleConfig()` 返回当前生效的配置，`resolveRippleConfig(search, hostConfig)` 可离线解析。
 
 调试对象 `window.__KINETIC_V4_DEBUG__` 还提供 `start()`（等同点开始）、`step(seconds)`（手动推进一帧，用于无 rAF 的环境）、`sweepCells(ids)`（模拟划过一组格子）、`previewRipple(seed, seconds, step, { sweeps, config })` 与 `auditRipple(seed)`。
+
+## 性能与后台行为
+
+- 发光不用 `shadowBlur`（Canvas 最贵的操作），改为"粗线低透明度光晕层 + 正常层"两遍绘制；墙图/背景缓存到离屏画布，每帧只 `drawImage`；默认 30 fps 重绘（`fps=` 可调）；点「开始」前不跑帧循环。
+- 页面隐藏（切标签、切后台、WebView 被遮住）或 `pagehide` 时：立即停掉所有连续声源、静音并 `suspend()` AudioContext；回到前台自动 `resume()`。`beforeunload` 时 `close()`。
+- 滑块摩擦声（循环噪声源）另有两道保险：启动时按该次亮起的剩余时长 `source.stop()`；每帧预约 0.3 s 后自动衰减到静音的看门狗——帧循环一停，摩擦声半秒内自己消失，不会残留。
 
 ## 测试与导出
 
