@@ -11,6 +11,7 @@
 | 目录 | 名称 | 说明 |
 | --- | --- | --- |
 | [`games/kinetic-maze`](games/kinetic-maze) | 夜间机关 · Kinetic Maze | 9×16 几何机关乐器：划过屏幕点亮一批机关，机关彼此唤醒、依次亮起熄灭；亮数在可配区间内大幅波动，全 Web Audio 空间音频。 |
+| [`games/mathematical-jellyfish`](games/mathematical-jellyfish) | 数学水母 · Mathematical Jellyfish | 9:16 深海点阵动画：一个参数曲面主水母与 16 组原公式远景水母，以不同相位松弛漂游；附 30 秒视频导出器与小红书封面。 |
 
 ## 约定
 

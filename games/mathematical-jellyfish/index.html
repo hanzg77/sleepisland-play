@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>数学水母 · Mathematical Jellyfish</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --sea-top: #0b7894;
+      --ink: rgba(232, 253, 255, 0.94);
+      --muted: rgba(218, 248, 252, 0.68);
+      --panel: rgba(1, 30, 52, 0.72);
+      --border: rgba(210, 250, 255, 0.16);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      background: #020b16;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      overflow: hidden;
+    }
+
+    body {
+      display: grid;
+      min-height: 100svh;
+      place-items: center;
+    }
+
+    .stage {
+      position: relative;
+      width: min(100vw, calc(100svh * 9 / 16));
+      aspect-ratio: 9 / 16;
+      overflow: hidden;
+      background: var(--sea-top);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: manipulation;
+    }
+
+    .title {
+      position: absolute;
+      top: max(18px, env(safe-area-inset-top));
+      left: 18px;
+      margin: 0;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      pointer-events: none;
+      text-shadow: 0 1px 10px rgba(0, 20, 38, 0.5);
+    }
+
+    .formula-toggle {
+      position: absolute;
+      right: 14px;
+      bottom: max(14px, env(safe-area-inset-bottom));
+      min-height: 38px;
+      padding: 0 13px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--ink);
+      background: var(--panel);
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    .formula-toggle:focus-visible {
+      outline: 2px solid rgba(220, 252, 255, 0.82);
+      outline-offset: 2px;
+    }
+
+    .formula {
+      position: absolute;
+      right: 14px;
+      bottom: calc(max(14px, env(safe-area-inset-bottom)) + 48px);
+      max-width: calc(100% - 28px);
+      margin: 0;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      color: var(--ink);
+      background: var(--panel);
+      font-size: 11px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .formula[hidden] { display: none; }
+
+    .credit {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      text-decoration: none;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .formula-toggle { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage" id="mathematical-jellyfish-stage">
+    <canvas id="mathematical-jellyfish" aria-label="由三角函数和幂函数实时生成的竖屏水母点云动画"></canvas>
+    <h1 class="title">MATHEMATICAL JELLYFISH</h1>
+    <pre class="formula" id="formula-panel" hidden><code>HERO BELL
+xᵦ = W cos(u)
+yᵦ = −H sin(u)
+
+TENTACLE s
+xₛ = bₛW(1−0.2v) + A(v)sin(ωₛv+φₛ+nₛt)
+yₛ = y₀ + Lₛv + B sin(3πv+φₛ+2t)
+
+DISTANT JELLIES
+k = 9 cos(5i) sin(i)
+e = 9 cos(3i) cos(2i)
+x = 99 sin(c) + kp + 200
+y = 99 sin(4c) + ep + 200</code><a class="credit" href="https://x.com/yuruyurau/status/2090832898488459699?s=20" target="_blank" rel="noreferrer">Original formula · @yuruyurau</a></pre>
+    <button class="formula-toggle" id="formula-toggle" type="button" aria-expanded="false" aria-controls="formula-panel">公式</button>
+  </main>
+  <script src="./mathematical-jellyfish.js"></script>
+</body>
+</html>
