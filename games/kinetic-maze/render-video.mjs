@@ -376,7 +376,10 @@ function renderAudio(performance, duration, output) {
     for (let index = 0; index < length; index += 1) {
       const time = index / synthesisRate;
       low += (random() - low) * color;
-      const envelope = Math.exp(-7 * time / decay);
+      const attack = 0.005;
+      const envelope = time < attack
+        ? time / attack
+        : Math.exp(-7 * (time - attack) / Math.max(attack, decay - attack));
       const sample = low * envelope * amplitude;
       left[start + index] += sample * panLeft;
       right[start + index] += sample * panRight;
@@ -469,7 +472,7 @@ async function main() {
   const temporaryVideo = path.join("/private/tmp", `${basename}-video-${process.pid}.mp4`);
   const temporaryAudio = path.join("/private/tmp", `${basename}-audio-${process.pid}.wav`);
   const runtime = createRuntime(options.seed);
-  if (runtime.debug.version !== "4.3-ripple-t1") throw new Error(`Unexpected V4 runtime ${runtime.debug.version}.`);
+  if (runtime.debug.version !== "4.8-live-capture-r16") throw new Error(`Unexpected V4 runtime ${runtime.debug.version}.`);
   const performance = runtime.debug.previewPerformance(options.seed, options.duration, 1 / 60);
   console.log(`[plan] seed=${options.seed} duration=${options.duration}s activations=${performance.activations.length} events=${performance.events.length}`);
   try {

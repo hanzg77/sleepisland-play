@@ -53,14 +53,16 @@
     }
 
     canvas {
+      position: absolute;
+      inset: 0;
       display: block;
       width: 100%;
       height: 100%;
-      background: var(--stage);
       touch-action: none;
     }
 
-    canvas.is-interactive { cursor: crosshair; }
+    .stage__world { background: var(--stage); }
+    .stage__world.is-interactive { cursor: crosshair; }
 
     .meta {
       position: absolute;
@@ -155,18 +157,18 @@
 <body>
   <main>
     <section class="stage" aria-label="1080 × 1920 几何机关 v4">
-      <canvas id="kinetic-maze-v4" width="1080" height="1920" aria-label="亮起才演奏的几何机关"></canvas>
+      <canvas class="stage__world" id="kinetic-maze-v4" width="1080" height="1920" aria-label="用划动录下会循环渐弱的机关旋律"></canvas>
       <div class="meta" id="meta-bar" aria-live="polite" hidden>
         <span class="meta__seed" id="seed-label">Seed —</span>
         <span id="status-label">已就绪</span>
       </div>
       <div class="chrome" id="chrome">
-        <p class="chrome__hint">手指或鼠标划过画面，机关会亮起并彼此唤醒</p>
+        <p class="chrome__hint" id="chrome-hint">点击开始后 · 移动鼠标生波 · 触屏按住划线</p>
         <button class="start" id="start-control" type="button">▶ 开始</button>
       </div>
-      <p class="hint" id="hint-label" hidden>划过画面，点亮一批机关</p>
+      <p class="hint" id="hint-label" hidden>鼠标移动就会生波；按住划线会记录旋律</p>
     </section>
   </main>
-  <script src="./kinetic-maze-v4.js?v=43-ripple-t1"></script>
+  <script src="./kinetic-maze-v4.js?v=55-live-capture-r16"></script>
 </body>
 </html>
