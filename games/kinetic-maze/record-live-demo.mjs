@@ -426,7 +426,7 @@ async function main() {
     await cdp.send("Page.navigate", { url: pageUrl.href });
     await waitForPage(cdp, `typeof window.__KINETIC_V4_DEBUG__ === "object" && document.readyState === "complete"`);
     const runtimeVersion = await evaluate(cdp, `window.__KINETIC_V4_DEBUG__.version`);
-    if (runtimeVersion !== "4.8-live-capture-r16") throw new Error(`Unexpected runtime: ${runtimeVersion}`);
+    if (runtimeVersion !== "4.8-live-capture-r17") throw new Error(`Unexpected runtime: ${runtimeVersion}`);
     const denseMode = await evaluate(cdp, `window.__KINETIC_V4_DEBUG__.getDenseDetailsExperiment().mode`);
     if (denseMode !== "off") throw new Error(`Live capture must use one full-size 9x16 board, not denseDetails=${denseMode}.`);
     process.stdout.write("[layout] one full-size 9x16 board\n");

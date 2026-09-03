@@ -472,7 +472,7 @@ async function main() {
   const temporaryVideo = path.join("/private/tmp", `${basename}-video-${process.pid}.mp4`);
   const temporaryAudio = path.join("/private/tmp", `${basename}-audio-${process.pid}.wav`);
   const runtime = createRuntime(options.seed);
-  if (runtime.debug.version !== "4.8-live-capture-r16") throw new Error(`Unexpected V4 runtime ${runtime.debug.version}.`);
+  if (runtime.debug.version !== "4.8-live-capture-r17") throw new Error(`Unexpected V4 runtime ${runtime.debug.version}.`);
   const performance = runtime.debug.previewPerformance(options.seed, options.duration, 1 / 60);
   console.log(`[plan] seed=${options.seed} duration=${options.duration}s activations=${performance.activations.length} events=${performance.events.length}`);
   try {

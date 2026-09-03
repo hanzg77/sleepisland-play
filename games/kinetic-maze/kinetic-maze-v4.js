@@ -4644,10 +4644,16 @@
   canvas.addEventListener("pointercancel", endSweep);
   canvas.addEventListener("pointerleave", endSweep);
   if (typeof window.addEventListener === "function") {
-    window.addEventListener("resize", () => {
+    const invalidatePointerGeometry = () => {
       pointerCanvasRect = null;
       hoverTracking = null;
-    }, { passive: true });
+    };
+    window.addEventListener("resize", invalidatePointerGeometry, { passive: true });
+    // The website embeds this canvas above an information panel, so the page can scroll while
+    // desktop hover input remains active. getBoundingClientRect() is viewport-relative: keeping
+    // the cached rect across a scroll would offset every subsequent trail and wave by that scroll.
+    // Capture also covers a future nested scrolling host without forcing layout on every move.
+    window.addEventListener("scroll", invalidatePointerGeometry, { passive: true, capture: true });
   }
 
   function previewOneShot(componentId, stepSeconds = 1 / 60) {
@@ -6186,7 +6192,7 @@
   }
 
   window.__KINETIC_V4_DEBUG__ = Object.freeze({
-    version: "4.8-live-capture-r16",
+    version: "4.8-live-capture-r17",
     getSnapshot: () => ({ mode, ...manager.snapshot(logicalTime), interaction: interaction?.snapshot(logicalTime) || null, ripple: ripple?.snapshot(logicalTime) || null, melody: melody?.snapshot(logicalTime) || null, visual: melodyVisualState() }),
     getAudioState: () => audio.diagnostics(),
     createLiveCaptureStream,

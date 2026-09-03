@@ -31,9 +31,16 @@ function mockContext(callCounts = null) {
 }
 
 class MockCanvas extends MockElement {
-  constructor(callCounts = null) { super(); this.width = 1080; this.height = 1920; this.context = mockContext(callCounts); }
+  constructor(callCounts = null) {
+    super();
+    this.width = 1080;
+    this.height = 1920;
+    this.context = mockContext(callCounts);
+    this.rect = { left: 0, top: 0, width: 1080, height: 1920 };
+    this.rectReadCount = 0;
+  }
   getContext() { return this.context; }
-  getBoundingClientRect() { return { left: 0, top: 0, width: 1080, height: 1920 }; }
+  getBoundingClientRect() { this.rectReadCount += 1; return { ...this.rect }; }
   captureStream(fps = 30) {
     const videoTrack = { kind: "video", stop() {} };
     const tracks = [videoTrack];
@@ -126,7 +133,7 @@ global.cancelAnimationFrame = () => {};
 require(runtimePath);
 const debug = global.window.__KINETIC_V4_DEBUG__;
 assert.ok(debug);
-assert.equal(debug.version, "4.8-live-capture-r16");
+assert.equal(debug.version, "4.8-live-capture-r17");
 const liveCaptureStream = debug.createLiveCaptureStream(30);
 assert.equal(liveCaptureStream.fps, 30);
 assert.equal(liveCaptureStream.getVideoTracks().length, 1);
@@ -1102,12 +1109,23 @@ function loadFreshMelodyRuntime(search, AudioContextClass, canvasCallCounts = nu
     ["#meta-bar", new MockElement()],
   ]);
   global.document = { querySelector(selector) { return runtimeElements.get(selector) || null; } };
-  global.window = { location: { search }, AudioContext: AudioContextClass };
+  const windowListeners = new Map();
+  global.window = {
+    location: { search },
+    AudioContext: AudioContextClass,
+    addEventListener(type, listener) { windowListeners.set(type, listener); },
+  };
   let scheduled = null;
   global.requestAnimationFrame = (callback) => { scheduled = callback; return 3; };
   delete require.cache[require.resolve(path.join(__dirname, "kinetic-maze-v4.js"))];
   require(path.join(__dirname, "kinetic-maze-v4.js"));
-  return { runtime: global.window.__KINETIC_V4_DEBUG__, canvas: runtimeCanvas, elements: runtimeElements, scheduledFrame: () => scheduled };
+  return {
+    runtime: global.window.__KINETIC_V4_DEBUG__,
+    canvas: runtimeCanvas,
+    elements: runtimeElements,
+    windowListeners,
+    scheduledFrame: () => scheduled,
+  };
 }
 
 (async () => {
@@ -1138,6 +1156,30 @@ function loadFreshMelodyRuntime(search, AudioContextClass, canvasCallCounts = nu
   assert.ok(afterStartSnapshot.visual.trailPointCount >= 2);
   assert.ok(afterStartSnapshot.melody.activeWaveCount > 0);
   assert.equal(startGatePage.runtime.getAudioState().initialized, false, "sound=off must still avoid allocating AudioContext after Start");
+
+  const offsetPage = loadFreshMelodyRuntime("?seed=offset-scroll-pointer&sound=off", MockAudioContext);
+  offsetPage.canvas.rect = { left: 100, top: 200, width: 540, height: 960 };
+  await offsetPage.runtime.start();
+  const offsetHoverMove = offsetPage.canvas.listeners.get("pointermove");
+  offsetHoverMove({
+    pointerId: 33, pointerType: "mouse", buttons: 0, pressure: 0,
+    clientX: 370, clientY: 680, timeStamp: 100, getCoalescedEvents: () => [],
+  });
+  const scaledOffsetPoint = offsetPage.runtime.getSnapshot().visual.lastTrailPoint;
+  assert.equal(scaledOffsetPoint.x, 540, "CSS scale and viewport offset must preserve the design-space x coordinate");
+  assert.equal(scaledOffsetPoint.y, 960, "CSS scale and viewport offset must preserve the design-space y coordinate");
+  assert.equal(offsetPage.canvas.rectReadCount, 1, "hover should reuse its geometry cache between stationary-layout samples");
+  offsetPage.canvas.rect = { left: 100, top: 80, width: 540, height: 960 };
+  assert.equal(typeof offsetPage.windowListeners.get("scroll"), "function", "scroll must invalidate viewport-relative canvas geometry");
+  offsetPage.windowListeners.get("scroll")();
+  offsetHoverMove({
+    pointerId: 33, pointerType: "mouse", buttons: 0, pressure: 0,
+    clientX: 370, clientY: 560, timeStamp: 140, getCoalescedEvents: () => [],
+  });
+  const afterScrollPoint = offsetPage.runtime.getSnapshot().visual.lastTrailPoint;
+  assert.equal(afterScrollPoint.x, 540, "a page scroll must not displace the next desktop trail or wave horizontally");
+  assert.equal(afterScrollPoint.y, 960, "a page scroll must not displace the next desktop trail or wave vertically");
+  assert.equal(offsetPage.canvas.rectReadCount, 2, "the first pointer sample after scroll must read fresh geometry");
 
   const baselineCanvasCalls = {};
   const denseCanvasCalls = {};
