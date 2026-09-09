@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Take a slow bicycle ride with Yingpeng, a cheerful pelican in a gently animated SVG illustration.">
+<title>Yingpeng’s Bicycle Ride</title>
+<style>
+:root{color-scheme:light;--paper:#fbf7ec;--ink:#2b4337}*{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;background:var(--paper);color:var(--ink);font-family:Georgia,"Times New Roman",serif}main{width:min(100%,1000px);padding:36px 18px 28px;text-align:center}.eyebrow{margin:0 0 18px;color:#a78169;font:11px/1.5 system-ui,sans-serif;letter-spacing:.32em;text-transform:uppercase}h1{margin:0;font-size:clamp(30px,5.6vw,54px);font-weight:500;letter-spacing:-.045em}.subtitle{margin:12px 0 0;color:#7c8778;font:14px/1.5 system-ui,sans-serif}svg{display:block;width:100%;height:auto;overflow:visible}button{min-width:144px;padding:14px 24px;border:1px solid var(--ink);border-radius:40px;background:var(--ink);color:var(--paper);font:13px system-ui,sans-serif;cursor:pointer;transition:background .2s,transform .2s}button:hover{background:#405c4c;transform:translateY(-2px)}button:focus-visible{outline:3px solid #e7b24e;outline-offset:5px}.caption{margin:18px 0 0;color:#969784;font:10px system-ui,sans-serif;letter-spacing:.18em;text-transform:uppercase}
+</style>
+</head>
+<body>
+<main>
+<p class="eyebrow">A little fresh air · with Yingpeng</p>
+<h1>Ride slowly. See a little more.</h1>
+<p class="subtitle">Nowhere to be. Just a very good breeze.</p>
+<svg id="scene" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 760" role="img" aria-labelledby="scene-title scene-description">
+<title id="scene-title">Yingpeng riding a bicycle</title>
+<desc id="scene-description">A cream-colored pelican with an enormous orange beak happily pedals a turquoise bicycle. The wheels turn, his feet circle the pedals, and little roadside plants drift past.</desc>
+<defs>
+<pattern id="paper" width="7" height="7" patternUnits="userSpaceOnUse"><circle cx="1" cy="2" r=".55" fill="#776e52" opacity=".07"/><circle cx="5" cy="6" r=".4" fill="#776e52" opacity=".05"/></pattern>
+<g id="grass" fill="none" stroke="#9aa386" stroke-width="2" stroke-linecap="round"><path d="M0 0 Q-2-10-9-15 M0 0 Q0-16 6-21 M0 0 Q7-8 13-8"/></g>
+<g id="wheel" stroke-linecap="round"><circle r="114" fill="#fbf7ec" stroke="#2b4337" stroke-width="17"/><circle r="105" fill="none" stroke="#299b9e" stroke-width="8"/><g class="spokes" stroke="#657260" stroke-width="1.6"/><circle r="14" fill="#aab6a1" stroke="#2b4337" stroke-width="3"/><circle r="5" fill="#299b9e"/></g>
+</defs>
+<rect width="960" height="760" fill="url(#paper)" pointer-events="none"/>
+<g fill="none" stroke="#d8d9c6" stroke-width="2" stroke-linecap="round"><path d="M80 293h66m-37 15h65" id="breeze-a"/><path d="M750 195h70m-34 15h53" id="breeze-b"/><path d="M764 421h41m-21 12h49"/></g>
+<path d="M45 664Q132 613 224 664T416 662T630 665T911 658" fill="none" stroke="#c7ceb8" stroke-width="2" opacity=".6"/>
+<ellipse cx="477" cy="720" rx="331" ry="13" fill="#dce0cc" opacity=".5"/><path d="M74 720H884" stroke="#cdd1bb" stroke-width="1.5"/>
+<g id="road" opacity=".8"><use href="#grass" x="148" y="738"/><use href="#grass" x="525" y="731"/><use href="#grass" x="846" y="737"/></g>
+<g transform="translate(255 594)"><g id="rear-wheel"><use href="#wheel"/></g></g>
+<g transform="translate(705 594)"><g id="front-wheel"><use href="#wheel"/></g></g>
+<g fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M133 552A130 130 0 0 1 348 507" stroke="#2b4337" stroke-width="15"/><path d="M133 552A130 130 0 0 1 348 507" stroke="#299b9e" stroke-width="10"/><path d="M577 594A129 129 0 0 1 735 468" stroke="#2b4337" stroke-width="15"/><path d="M577 594A129 129 0 0 1 735 468" stroke="#299b9e" stroke-width="10"/></g>
+<g stroke-linecap="round" stroke-linejoin="round"><path id="far-leg-outline" fill="none" stroke="#2b4337" stroke-width="20"/><path id="far-leg" fill="none" stroke="#e2caab" stroke-width="14"/><g id="far-foot" fill="#df863e" stroke="#2b4337" stroke-width="3"><path d="M-8-9Q12-14 47-5L40 0 49 7 37 10H-10Z"/><path d="M-11 13H29" fill="none" stroke-width="7"/></g></g>
+<g fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M255 594L359 459 441 610 255 594 M359 459L626 429 441 610 M609 391L705 594" stroke="#2b4337" stroke-width="17"/><path d="M255 594L359 459 441 610 255 594 M359 459L626 429 441 610 M609 391L705 594" stroke="#299b9e" stroke-width="11"/>
+<path d="M360 461L350 431" stroke="#2b4337" stroke-width="10"/><path d="M321 431Q350 441 388 430" stroke="#2b4337" stroke-width="17"/>
+<path d="M606 393L599 373Q645 326 607 316L580 322" stroke="#2b4337" stroke-width="15"/><path d="M606 393L599 373Q645 326 607 316L580 322" stroke="#b9c1aa" stroke-width="9"/><path d="M580 322L557 326" stroke="#2b4337" stroke-width="18"/>
+<path d="M257 601L429 645Q468 649 479 615 Q481 584 448 575L260 578" stroke="#657260" stroke-width="3"/>
+</g>
+<circle cx="441" cy="610" r="36" fill="#adb7a1" stroke="#2b4337" stroke-width="4"/>
+<g id="chainring" fill="#fbf7ec" stroke="#657260" stroke-width="2"><path d="M435 582L435 599 421 590Z"/><path d="M462 589L450 602 467 607Z"/><path d="M466 621L450 618 455 635Z"/><path d="M430 636L436 620 419 622Z"/><path d="M415 608L432 607 421 596Z"/></g>
+<path id="crank" stroke="#596e5a" stroke-width="8" stroke-linecap="round"/>
+<g id="bird" stroke="#384d3d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+<path fill="#f9eedc" d="M403 237 C401 266 450 289 451 333 C453 367 428 387 413 407 C389 438 351 454 302 452 Q258 461 231 448 Q213 454 210 445 L232 432 Q213 436 221 425 L239 411 Q219 420 224 411 C251 390 250 359 287 326 C317 298 348 284 374 273 C399 260 397 245 372 220 C341 192 331 168 333 145 Q313 154 325 137 Q305 142 318 130 Q300 130 319 120 Q309 109 320 109 C344 105 351 86 382 87 C418 86 443 105 448 133 L457 175Z"/>
+<path d="M384 242Q416 235 449 275" fill="none" stroke="#887457"/>
+<path fill="#ec873a" d="M383 150 C391 194 436 211 470 242 C507 277 546 283 582 266 C614 252 642 224 663 218 L683 218 L450 154Z"/>
+<path fill="#eeb84d" d="M383 150Q410 165 444 132 L680 207 Q697 213 690 222 Q686 226 676 217 C570 200 463 178 405 165 Q391 160 383 150Z"/>
+<path d="M409 164Q526 179 676 217" stroke="#967343" stroke-width="2" fill="none"/>
+<path d="M397 132Q410 119 425 129Q413 145 397 132" fill="#fbf7ec" stroke-width="2"/><ellipse id="pupil" cx="414" cy="132" rx="6.5" ry="9" fill="#384d3d" stroke="none"/><path d="M392 116Q406 108 419 114" fill="none" stroke-width="2"/><path d="M380 152Q386 146 392 149" fill="none"/>
+<path fill="#f9eedc" d="M380 281 C418 266 445 309 492 309 Q530 313 574 303 Q593 299 596 321 Q596 339 583 342 L578 324 Q587 346 572 347 L568 329 Q575 349 559 350 L554 334 C533 353 510 370 486 369 L496 358 Q471 379 458 369 L470 359 Q446 379 433 369 L444 360 Q422 377 410 366 L419 356 Q393 372 384 357 L392 348 Q366 358 359 345 Q351 334 366 325"/>
+<path d="M320 411Q348 426 373 422" fill="none" stroke="#b4a58a" stroke-width="2"/>
+</g>
+<g stroke-linecap="round" stroke-linejoin="round"><path id="near-leg-outline" fill="none" stroke="#384d3d" stroke-width="22"/><path id="near-leg" fill="none" stroke="#f9eedc" stroke-width="16"/><g id="near-foot" fill="#ef9344" stroke="#384d3d" stroke-width="3"><path d="M-9-11Q14-12 45-5L39 0 49 6 38 10H-11Z"/><path d="M-12 14H30" fill="none" stroke-width="7"/></g></g>
+<circle cx="441" cy="610" r="9" fill="#299b9e" stroke="#384d3d" stroke-width="3"/>
+<ellipse id="leaf" cx="800" cy="390" rx="10" ry="4" fill="#a0aa8d"/>
+</svg>
+<button id="toggle" type="button" aria-pressed="false">Pause the ride</button>
+<p class="caption">A small ride, a lovely day</p>
+</main>
+<script>
+(() => {
+  const get = id => document.getElementById(id);
+  const spokes = get('scene').querySelector('.spokes');
+  for (let i = 0; i < 24; i++) {
+    const angle = i * Math.PI / 12;
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    for (const [key, value] of Object.entries({x1:Math.cos(angle)*15,y1:Math.sin(angle)*15,x2:Math.cos(angle)*100,y2:Math.sin(angle)*100})) line.setAttribute(key, value);
+    spokes.appendChild(line);
+  }
+  const button = get('toggle');
+  let paused = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let time = 0, previous = null, frameId = null;
+  function updateButton() {
+    button.textContent = paused ? 'Continue the ride' : 'Pause the ride';
+    button.setAttribute('aria-pressed', String(paused));
+  }
+  function leg(prefix, angle, bob) {
+    const footX = 441 + Math.cos(angle)*43, footY = 610 + Math.sin(angle)*43;
+    const hipX = prefix === 'near' ? 381 : 363, hipY = 421 + bob;
+    const targetY = footY-10, dx = footX-hipX, dy = targetY-hipY;
+    const distance = Math.hypot(dx,dy), upper = 124, lower = 122;
+    const along = (upper**2-lower**2+distance**2)/(2*distance);
+    const height = Math.sqrt(Math.max(0,upper**2-along**2));
+    const kneeX = hipX+dx*along/distance+dy*height/distance;
+    const kneeY = hipY+dy*along/distance-dx*height/distance;
+    const d = `M${hipX} ${hipY} L${kneeX} ${kneeY} L${footX} ${targetY}`;
+    get(`${prefix}-leg-outline`).setAttribute('d',d);
+    get(`${prefix}-leg`).setAttribute('d',d);
+    get(`${prefix}-foot`).setAttribute('transform',`translate(${footX} ${footY})`);
+    return [footX,footY+14];
+  }
+  function render() {
+    const angle = time*2.6-Math.PI/2, degrees = angle*180/Math.PI;
+    const bob = Math.sin(angle*2)*2.2;
+    get('bird').setAttribute('transform',`translate(0 ${bob})`);
+    for (const id of ['rear-wheel','front-wheel']) get(id).setAttribute('transform',`rotate(${degrees*1.7})`);
+    get('chainring').setAttribute('transform',`rotate(${degrees} 441 610)`);
+    const near = leg('near',angle,bob), far = leg('far',angle+Math.PI,bob);
+    get('crank').setAttribute('d',`M${near[0]} ${near[1]}L441 610L${far[0]} ${far[1]}`);
+    Array.from(get('road').children).forEach((item,i) => {
+      const base = [148,525,846][i];
+      const x = ((base-time*65+70)%1000+1000)%1000-70;
+      item.setAttribute('transform',`translate(${x-base} 0)`);
+    });
+    get('breeze-a').setAttribute('transform',`translate(${-Math.sin(time)*14} 0)`);
+    get('breeze-b').setAttribute('transform',`translate(${-Math.sin(time+2)*18} 0)`);
+    const leafX = 870-(time*55)%900, leafY = 380+Math.sin(time*1.5)*22;
+    get('leaf').setAttribute('transform',`translate(${leafX-800} ${leafY-390}) rotate(${Math.sin(time)*30} 800 390)`);
+    get('pupil').setAttribute('ry',time%5.5>5.32?1:9);
+  }
+  function frame(now) {
+    frameId = null;
+    if (previous !== null) time += Math.min((now-previous)/1000,.05);
+    previous = now;
+    render();
+    if (!paused && !document.hidden) frameId = requestAnimationFrame(frame);
+  }
+  function syncPlayback() {
+    if (frameId !== null) cancelAnimationFrame(frameId);
+    frameId = null;
+    previous = null;
+    if (!paused && !document.hidden) frameId = requestAnimationFrame(frame);
+  }
+  button.addEventListener('click',() => { paused = !paused; updateButton(); syncPlayback(); });
+  document.addEventListener('visibilitychange',syncPlayback);
+  updateButton(); render(); syncPlayback();
+})();
+</script>
+</body>
+</html>
